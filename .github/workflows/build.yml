@@ -1,4 +1,4 @@
-name: Compilar v0.1 - Windows y Android
+name: Compilar v0.2 - Windows y Android
 on:
   push:
     branches: [main]
@@ -19,11 +19,11 @@ jobs:
       - name: Comprobar código
         run: python -m py_compile desktop/control_entradas.py
       - name: Compilar EXE
-        run: pyinstaller --noconfirm --clean --onefile --windowed --name ControlEntradas_Windows_v0.1 desktop/control_entradas.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name ControlEntradas_Windows_v0.2 desktop/control_entradas.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_Windows_v0.1
-          path: dist/ControlEntradas_Windows_v0.1.exe
+          name: ControlEntradas_Windows_v0.2
+          path: dist/ControlEntradas_Windows_v0.2.exe
           if-no-files-found: error
           retention-days: 30
   android:
@@ -38,6 +38,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Instalar SDK Android 35
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Compilar APK debug de pruebas
         working-directory: android
         run: gradle --no-daemon assembleDebug
