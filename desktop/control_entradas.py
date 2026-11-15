@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -404,7 +404,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.6", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.7", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -607,14 +607,14 @@ def launch_gui():
             return
         import shutil
         import ticket_printer
-        from PIL import ImageTk
+        from PIL import Image, ImageTk
 
         event = next((item for item in list_events() if item['id'] == event_id), None)
         if event is None:
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de 6 tickets · ZYWELL · v0.6')
+        win.title('Diseñador de 6 tickets · ZYWELL · v0.7')
         win.geometry('940x755')
         win.minsize(800,645)
         win.transient(root)
@@ -648,6 +648,7 @@ def launch_gui():
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
+            'desplazamiento_mm':tk.StringVar(value=str(config.get('desplazamiento_mm','0'))),
             'cabecera':tk.StringVar(value=config.get('cabecera','Escuela Municipal de Música y Danza')),
             'subtitulo':tk.StringVar(value=config.get('subtitulo','Arroyo de la Miel')),
             'lugar':tk.StringVar(value=config.get('lugar','Casa de la Cultura · Arroyo de la Miel')),
@@ -689,7 +690,7 @@ def launch_gui():
         ttk.Label(printer_group,text='Rollo (mm)').grid(row=1,column=0,sticky='w',pady=7)
         ttk.Combobox(printer_group,textvariable=roll,values=('58','80'),width=9,state='readonly').grid(row=1,column=1,sticky='w',padx=7)
         ttk.Label(printer_group,text='Largo del ticket (mm)').grid(row=1,column=2,sticky='w')
-        ttk.Combobox(printer_group,textvariable=length,values=('90','105','120','125','135','150','165'),width=8).grid(row=1,column=3,sticky='w',padx=7)
+        ttk.Combobox(printer_group,textvariable=length,values=('90','105','120','125','135','150','165','180'),width=8).grid(row=1,column=3,sticky='w',padx=7)
         ttk.Label(printer_group,text='Modo de corte').grid(row=2,column=0,sticky='w',pady=7)
         ttk.Combobox(printer_group,textvariable=cut_mode,values=ticket_printer.CUT_MODES,width=29,state='readonly').grid(row=2,column=1,sticky='w',padx=7)
         ttk.Label(printer_group,text='Avance manual (puntos)').grid(row=2,column=2,sticky='w')
@@ -699,7 +700,8 @@ def launch_gui():
         printer_group.columnconfigure(1,weight=1)
         ttk.Label(page_print,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
                                   'Corte automático: GS V 65, si la ZYWELL lo admite. Corte manual: ajusta el avance antes de la cuchilla.\n'
-                                  'Prueba primero 2 tickets; la distancia cabezal-cortador depende del modelo.',
+                                  'Prueba primero 2 tickets; la distancia cabezal-cortador depende del modelo.\n'
+                                  'El largo determina el papel REAL; ya no deforma los elementos del diseño.',
                   wraplength=780,justify='left').pack(anchor='w',pady=8)
 
         art=ttk.LabelFrame(page_design,text='Plantilla horizontal e imágenes',padding=10)
@@ -708,6 +710,7 @@ def launch_gui():
             'plantilla':'Diseño (6 modelos)',
             'ajuste_imagen':'Ajuste de fotografía',
             'tamano_logos':'Tamaño de logotipos',
+            'desplazamiento_mm':'Ajustar diseño al corte (mm)',
             'cabecera':'Cabecera',
             'subtitulo':'Subtítulo',
             'lugar':'Lugar',
@@ -717,10 +720,11 @@ def launch_gui():
         }
         for r,key in enumerate(labels):
             ttk.Label(art,text=labels[key]).grid(row=r,column=0,sticky='w',pady=5)
-            if key in ('plantilla','ajuste_imagen','tamano_logos'):
+            if key in ('plantilla','ajuste_imagen','tamano_logos','desplazamiento_mm'):
                 choices={'plantilla':ticket_printer.TEMPLATES,
                          'ajuste_imagen':ticket_printer.IMAGE_FITS,
-                         'tamano_logos':ticket_printer.LOGO_SIZES}[key]
+                         'tamano_logos':ticket_printer.LOGO_SIZES,
+                         'desplazamiento_mm':('-3','-2','-1','0','1','2','3')}[key]
                 ttk.Combobox(art,textvariable=variables[key],values=choices,state='readonly',width=37).grid(row=r,column=1,sticky='w',padx=7)
             else:
                 ttk.Entry(art,textvariable=variables[key],width=56).grid(row=r,column=1,sticky='ew',padx=7)
@@ -732,7 +736,8 @@ def launch_gui():
                 ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=r,column=2,padx=5)
         art.columnconfigure(1,weight=1)
         ttk.Label(page_design,text='«Rellenar y recortar» ocupa por completo la zona del cartel; «Mostrar completa» evita recortes, pero puede dejar bandas.\n'
-                                    '«04 · Fondo suave» coloca el cartel aclarado detrás del texto. Los 6 modelos mantienen el QR verificable.',
+                                    '«04 · Fondo suave» coloca el cartel aclarado detrás del texto. Los 6 modelos mantienen el QR verificable.\n'
+                                    'El ajuste de -3 a +3 mm desplaza el diseño sin variar el largo de papel ni deformar el QR.',
                   wraplength=850,justify='left').pack(anchor='w',pady=10)
 
         note=tk.StringVar(value='Elige una plantilla y comprueba la vista previa. Se respetan los datos y las entradas existentes.')
@@ -768,6 +773,8 @@ def launch_gui():
         def current_design(save=False):
             d={k:v.get().strip() for k,v in variables.items()}
             d['poster_mode']='fondo' if d['plantilla']==ticket_printer.TEMPLATES[3] else 'lateral'
+            if not -3 <= float(d.get('desplazamiento_mm') or '0') <= 3:
+                raise ValueError('Desplazamiento permitido: -3 a +3 mm.')
             if save:
                 directory=DATA_DIR/'imagenes'/event_id
                 directory.mkdir(parents=True,exist_ok=True)
@@ -835,16 +842,27 @@ def launch_gui():
                 wid=viewport.create_window((0,0),window=inner,anchor='nw')
                 inner.bind('<Configure>',lambda *_:viewport.configure(scrollregion=viewport.bbox('all')))
                 viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
+                # Mismo bitmap que se envía a la impresora: miniatura centrada,
+                # sin crops y sin cambiar la relación de aspecto.
                 for i,template in enumerate(ticket_printer.TEMPLATES):
                     copy=dict(d);copy['plantilla']=template
                     pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,length_mm=ticket_length())
-                    pic.thumbnail((465,245))
-                    photo=ImageTk.PhotoImage(pic)
+                    art_w,art_h=470,248
+                    pic.thumbnail((art_w,art_h),Image.Resampling.LANCZOS)
+                    paper=Image.new('RGB',(484,264),'#ececec')
+                    x=(paper.width-pic.width)//2
+                    y=(paper.height-pic.height)//2
+                    paper.paste(pic,(x,y))
+                    from PIL import ImageDraw
+                    ImageDraw.Draw(paper).rectangle((x,y,x+pic.width-1,y+pic.height-1),outline='#333333',width=1)
+                    photo=ImageTk.PhotoImage(paper)
                     box=ttk.LabelFrame(inner,text=template,padding=7)
                     box.grid(row=i//2,column=i%2,padx=6,pady=6,sticky='nsew')
                     thumb=ttk.Label(box,image=photo)
                     thumb.image=photo
-                    thumb.pack()
+                    thumb.pack(anchor='center')
+                    ttk.Label(box,text=f'Papel: {roll.get()} mm  ·  Largo: {ticket_length()} mm  ·  Sin recortar',
+                              foreground='#42586a').pack(anchor='center',pady=(2,0))
                     def choose(t=template):
                         variables['plantilla'].set(t)
                         notebook.select(page_design)

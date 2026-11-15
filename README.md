@@ -1,24 +1,29 @@
-# Control de Entradas · v0.6 (pruebas)
+# Control de Entradas · v0.7 (prototipo)
 
-**6 plantillas horizontales seleccionables:** Clásico, Cartel protagonista, Panorámico, Fondo suave, Editorial y Mosaico. Entrada independiente y QR firmado.
+Proyecto de pruebas para la Escuela Municipal de Música y Danza de Benalmádena. Permite generar entradas libres o numeradas con QR firmado y validación local en varios dispositivos Android.
 
-**ZYWELL:** impresión consecutiva de un rango (número inicial + cantidad), cada entrada con un QR diferente y avance de papel configurable de 0 a 255 puntos antes de ordenar el corte ESC/POS tras cada entrada. La orden de corte requiere impresora y controlador compatibles y debe probarse físicamente.
+## Cambios v0.7: encuadre y corte
 
-**Imágenes:** seleccionar cartel JPG/PNG, logotipos de Ayuntamiento y centro, tamaño de logos (tres opciones) y tratamiento del cartel (rellenar recortando o mostrar completo). «Fondo suave» queda ahora como diseño visible (número 04); los antiguos ajustes en que era el fondo se conservan.
+- **Seis diseños**: Clásico, Cartel protagonista, Panorámico, Fondo suave, Editorial y Mosaico.
+- **Longitud real**: cada diseño se genera directamente a la medida elegida, sin redimensionar posteriormente el texto, la fotografía o el QR. El PDF individual y el RAW ESC/POS utilizan el mismo lienzo.
+- **Galería corregida**: las seis miniaturas respetan la relación de aspecto exacta del ticket, centradas en paneles con fondo neutro, sin recortes adicionales de la entrada.
+- **Márgenes de seguridad para el corte**: se evita colocar el borde exterior justo sobre los extremos longitudinales del papel. El diseñador añade un ajuste de desplazamiento de -3 a +3 mm sin cambiar la longitud ni modificar el QR.
+- **Lotes**: una única inicialización ESC/POS por lote y una orden de corte por entrada. Se mantienen los dos modos (avance manual configurable / avance automático GS V 65) y la selección de impresora Windows.
+- **QR**: se conserva bit a bit sin interpolación cuando cambia la longitud o el diseño.
+- **Imágenes**: JPG/PNG del espectáculo, dos logos opcionales, rellenar con recorte o mostrar completo, fondo suave en plantilla 04.
 
-**Seguridad y persistencia:** La impresión o reimpresión no consume entradas ni modifica la validación del QR. Las funciones anteriores se mantienen. Eliminación de funciones con confirmación.
+## Instalación y pruebas
 
-**Compilar Windows:** en GitHub Actions descargar el artefacto `ControlEntradas_Windows_v0.6`; o instalar las dependencias de `desktop/requirements.txt` y ejecutar `pyinstaller --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.6 desktop/control_entradas.py`.
+Windows: usar el EXE compilado de la sección GitHub Actions, artefacto `ControlEntradas_Windows_v0.7`, o compilar con `pyinstaller --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.7 desktop/control_entradas.py`.
 
-**Probar:** `python -m pip install -r desktop/requirements.txt opencv-python-headless numpy` y `python -m unittest discover -s tests -v`.
+Pruebas de desarrollo: `pip install -r desktop/requirements.txt opencv-python-headless numpy` y `python -m unittest discover -s tests -v`.
 
-> Prototipo independiente para evaluar el flujo, no una solución de producción ni herramienta oficial municipal. No se ha verificado físicamente la ZYWELL; utiliza entradas de prueba y calibra el cortador antes de emitir entradas reales.
+## Calibración de la ZYWELL
 
-## Calibración del cabezal y corte en v0.6
+El papel de 80 mm no siempre permite imprimir 80 mm de ancho; esta aplicación utiliza 576 puntos (~72 mm) para rollo de 80 mm y 384 puntos (~48 mm) para 58 mm. El diseño horizontal se imprime girado 90 grados.
 
-- El papel de 80 mm habitualmente tiene 72 mm imprimibles: no se pueden imprimir los 80 mm con un cabezal de 576 puntos.
-- Ahora se puede cambiar el largo (en mm), manteniendo el tamaño y la legibilidad del QR; se ajusta el cuerpo del ticket sin escalar el talón.
-- Se añaden dos modos de corte: **manual con avance en puntos** y **automático GS V 65** (requiere soporte en el firmware).
-- El avance manual predeterminado para instalaciones nuevas es **120 puntos**; es un punto de partida que necesita calibración física. Se conservan las preferencias de instalaciones anteriores.
-- Probar primero con dos tickets. Si el corte cae dentro de los datos, aumentar el avance. Si queda mucho papel en blanco, reducirlo en pasos de 8 o 16 puntos.
-- El corte no puede estar totalmente garantizado sin la referencia exacta de ZYWELL y una prueba real.
+Para calibrar: elige un ticket de 135 mm en rollo de 80 mm, **modo automático GS V 65 si el firmware lo soporta**, y prueba dos tickets. Si el modelo no admite GS V 65, usa avance manual en puntos y prueba incrementos pequeños; si sigue sin cortar en una franja blanca, ajusta el desplazamiento del diseño de -3 a +3 mm. El corte exacto NO se puede garantizar desde software sin conocer modelo, mecanismo y resultados de prueba física.
+
+**Importante**: no imprimir lotes grandes antes de verificar dos cortes consecutivos. El programa no marca entradas como usadas cuando solo se imprimen. Las funciones y ajustes previos se conservan.
+
+Prototipo independiente, no es un producto municipal oficial ni una solución de producción acreditada.

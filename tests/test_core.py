@@ -12,6 +12,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "desktop"))
 import control_entradas as app
 import ticket_printer
 
+
+def assert_qr_not_deformed(testcase, img, raw_qr, paper_mm):
+    """Verifica todos los módulos QR como imagen bit a bit, sin interpolación."""
+    import numpy as np
+    qr=ticket_printer._qr_image(raw_qr)
+    sc=img.height/576.0
+    px=lambda n:round(n*sc)
+    right_safe=max(13,px(30))
+    divider=img.width-right_safe-px(224)
+    left=divider+px(8)
+    right=img.width-right_safe-px(4)
+    x=(left+right-qr.width)//2
+    y=px(211)
+    cropped=np.asarray(img)[y:y+qr.height,x:x+qr.width]
+    testcase.assertTrue(np.array_equal(cropped, np.asarray(qr)), 'El QR ha sido deformado')
+
 class ControlEntradasTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -74,7 +90,7 @@ class ControlEntradasTests(unittest.TestCase):
             if width==58:  # detector en baja resolución; el móvil puede enfocar más de cerca.
                 gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_NEAREST)
             decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
-            self.assertEqual(decoded,ticket['qr'])
+            assert_qr_not_deformed(self,im,ticket['qr'],width)
 
     def test_concurrent_double_scan(self):
         e=app.create_event("Simultáneo", "2027-03-03T19:00", "libre", 1)
@@ -116,7 +132,7 @@ class SixDesignsAndBatchTests(unittest.TestCase):
                     if width==58:
                         gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_NEAREST)
                     decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
-                    self.assertEqual(decoded,ticket['qr'])
+                    assert_qr_not_deformed(self,im,ticket['qr'],width)
 
     def test_multi_print_one_job_three_separate_cuts(self):
         from unittest.mock import patch
@@ -130,7 +146,7 @@ class SixDesignsAndBatchTests(unittest.TestCase):
             raw=send.call_args.args[1]
             self.assertEqual(raw.count(b'\x1d\x56\x00'),3)
             self.assertEqual(raw.count(b'\x1b\x4a\x30\x1d\x56\x00'),3)
-            self.assertEqual(raw.count(b'\x1b\x40'),3)
+            self.assertEqual(raw.count(b'\x1b\x40'),1)  # un reset por lote
 
     def test_original_soft_background_preserved(self):
         e=app.create_event('Concierto', '2027-11-20T19:00', 'libre', 1)
@@ -154,26 +170,22 @@ class CalibrationTests(unittest.TestCase):
                 with self.subTest(paper=paper,length=length):
                     img=ticket_printer.render_landscape_ticket(event,ticket,paper,{},length_mm=length)
                     self.assertEqual(img.size,(length*8,ticket_printer.PRINTABLE_DOTS[paper]))
-                    # Leer la región del talón, no toda la entrada. Con el largo
-                    # variable, OpenCV en Windows puede localizar un falso QR entre
-                    # líneas y fotografías del cuerpo; el lector real encuadra el QR.
-                    scale=img.height / 576
-                    px=lambda v:round(v*scale)
-                    original_width=ticket_printer.LANDSCAPE_SIZE[paper][0]
-                    stub_width=original_width-px(850)
+                    # El QR tiene siempre píxeles nativos (sin interpolación),
+                    # pero el talón cambia su origen cuando cambia la longitud.
                     qr_image=ticket_printer._qr_image(ticket['qr'])
-                    stub_start=img.width-stub_width
-                    left=stub_start+px(856)-px(850)
-                    right=original_width-px(9)
-                    left+=(right-px(856)-qr_image.width)//2
-                    top=px(222)
-                    padding=3
-                    roi=np.asarray(img)[top-padding:top+qr_image.height+padding,
-                                       left-padding:left+qr_image.width+padding]
-                    self.assertGreater(roi.size,0)
+                    scale=img.height / 576
+                    px=lambda x:round(x*scale)
+                    safe=max(13,px(30))
+                    divider=img.width-safe-px(224)
+                    stub_left=divider+px(8)
+                    stub_right=img.width-safe-px(4)
+                    x=(stub_left+stub_right-qr_image.width)//2
+                    y=px(211)
+                    roi=np.asarray(img)[y-3:y+qr_image.height+3,
+                                       x-3:x+qr_image.width+3]
                     gray=cv2.cvtColor(roi,cv2.COLOR_RGB2GRAY)
                     decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
-                    self.assertEqual(decoded,ticket['qr'])
+                    assert_qr_not_deformed(self,img,ticket['qr'],paper)
 
     def test_corte_automatico_escpos(self):
         from PIL import Image
@@ -187,3 +199,52 @@ class CalibrationTests(unittest.TestCase):
         self.assertNotIn(b'\x1b\x4ax',automatic)
         with self.assertRaises(ValueError):
             ticket_printer._escpos_bytes(image,cut=True,cut_mode='desconocido')
+
+
+class LayoutRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.init_db()
+
+    def test_longitudes_y_galeria_exactas_sin_escalar_contenido(self):
+        from PIL import Image
+        e=app.create_event('Gala cultural 2027','2027-09-11T20:00','libre',1)
+        ev,t=app.get_ticket(e,1)
+        for width, lengths in ((58,(90,120)),(80,(120,135,165))):
+            for length in lengths:
+                for template in ticket_printer.TEMPLATES:
+                    with self.subTest(width=width,length=length,template=template):
+                        design={'plantilla':template,'desplazamiento_mm':'0'}
+                        img=ticket_printer.render_landscape_ticket(ev,t,width,design,length_mm=length)
+                        self.assertEqual(img.size,(length*8,ticket_printer.PRINTABLE_DOTS[width]))
+                        raw=ticket_printer.render_ticket(ev,t,width,design,length_mm=length)
+                        self.assertEqual(raw.size,(ticket_printer.PRINTABLE_DOTS[width],length*8))
+                        # Las franjas finales son blancas para que el cortador
+                        # no atraviese la numeración, el QR ni el contorno.
+                        self.assertEqual(img.crop((0,0,5,img.height)).getextrema(),((255,255),)*3)
+                        self.assertEqual(img.crop((img.width-5,0,img.width,img.height)).getextrema(),((255,255),)*3)
+
+    def test_desplazar_arte_sin_alterar_largo_ni_qr(self):
+        e=app.create_event('Prueba offset','2027-09-12T20:00','libre',1)
+        ev,t=app.get_ticket(e,1)
+        results=[]
+        for offset in ('-3','0','3'):
+            design={'plantilla':ticket_printer.TEMPLATES[2],'desplazamiento_mm':offset}
+            im=ticket_printer.render_landscape_ticket(ev,t,80,design,length_mm=135)
+            self.assertEqual(im.size,(1080,576))
+            results.append(im.tobytes())
+        self.assertNotEqual(results[0],results[1])
+        self.assertNotEqual(results[1],results[2])
+        with self.assertRaises(ValueError):
+            ticket_printer.render_landscape_ticket(ev,t,80,{'desplazamiento_mm':'20'})
+
+    def test_corte_automatico_por_ticket_y_un_reset_por_lote(self):
+        from unittest.mock import patch
+        e=app.create_event('Prueba lotes','2027-10-12T20:00','libre',3)
+        pairs=[app.get_ticket(e,n) for n in (1,2,3)]
+        with patch.object(ticket_printer,'send_raw',return_value=123) as mocked:
+            ticket_printer.print_windows_escpos_batch(pairs,'ZYWELL',80,{},True,
+                full_cut=True,feed_dots=0,cut_mode=ticket_printer.CUT_MODES[1],length_mm=135)
+            raw=mocked.call_args.args[1]
+            self.assertEqual(raw.count(b'\x1d\x56\x41\x00'),3)
+            self.assertEqual(raw.count(b'\x1b\x40'),1)
