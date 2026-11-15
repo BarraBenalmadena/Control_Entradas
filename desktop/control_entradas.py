@@ -1,4 +1,4 @@
-"""Control de Entradas 0.5 - seis diseños horizontales, lotes y corte ajustable.
+"""Control de Entradas 0.6 - largo variable y corte con autocalibración alternativa.
 
 Software de demostración para validar el flujo de entrada libre y numerada.
 Se usa ECDSA P-256 para verificar la autenticidad de los QR.
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -404,7 +404,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.5", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.6", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -614,7 +614,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de 6 tickets · ZYWELL · v0.5')
+        win.title('Diseñador de 6 tickets · ZYWELL · v0.6')
         win.geometry('940x755')
         win.minsize(800,645)
         win.transient(root)
@@ -638,7 +638,9 @@ def launch_gui():
             printer.set(next((n for n in printers if 'zywell' in n.lower() or 'pos-' in n.lower()),printers[0]))
         cut=tk.BooleanVar(value=bool(prefs.get('corte_v04',True)))
         cut_type=tk.StringVar(value=prefs.get('tipo_corte','Completo'))
-        feed=tk.StringVar(value=str(prefs.get('avance_corte','64')))
+        feed=tk.StringVar(value=str(prefs.get('avance_corte','120')))
+        cut_mode=tk.StringVar(value=prefs.get('modo_corte',ticket_printer.CUT_MODES[0]))
+        length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
         if chosen not in ticket_printer.TEMPLATES:
             chosen=ticket_printer.TEMPLATES[3 if config.get('poster_mode')=='fondo' else 0]
@@ -686,14 +688,18 @@ def launch_gui():
         ttk.Combobox(printer_group,textvariable=printer,values=printers,width=52,state='readonly').grid(row=0,column=1,columnspan=3,sticky='ew',padx=7)
         ttk.Label(printer_group,text='Rollo (mm)').grid(row=1,column=0,sticky='w',pady=7)
         ttk.Combobox(printer_group,textvariable=roll,values=('58','80'),width=9,state='readonly').grid(row=1,column=1,sticky='w',padx=7)
-        ttk.Label(printer_group,text='Avance antes del corte (puntos)').grid(row=1,column=2,sticky='w')
-        ttk.Combobox(printer_group,textvariable=feed,values=('0','24','40','48','64','80','96','120','160','200'),width=8).grid(row=1,column=3,sticky='w',padx=7)
-        ttk.Checkbutton(printer_group,text='Cortar cada ticket (ESC/POS)',variable=cut).grid(row=2,column=0,columnspan=2,sticky='w',pady=6)
-        ttk.Combobox(printer_group,textvariable=cut_type,values=('Completo','Parcial'),width=12,state='readonly').grid(row=2,column=2,columnspan=2,sticky='w',padx=7)
+        ttk.Label(printer_group,text='Largo del ticket (mm)').grid(row=1,column=2,sticky='w')
+        ttk.Combobox(printer_group,textvariable=length,values=('90','105','120','125','135','150','165'),width=8).grid(row=1,column=3,sticky='w',padx=7)
+        ttk.Label(printer_group,text='Modo de corte').grid(row=2,column=0,sticky='w',pady=7)
+        ttk.Combobox(printer_group,textvariable=cut_mode,values=ticket_printer.CUT_MODES,width=29,state='readonly').grid(row=2,column=1,sticky='w',padx=7)
+        ttk.Label(printer_group,text='Avance manual (puntos)').grid(row=2,column=2,sticky='w')
+        ttk.Combobox(printer_group,textvariable=feed,values=('0','48','64','80','96','104','112','120','128','144','160','184','200'),width=8).grid(row=2,column=3,sticky='w',padx=7)
+        ttk.Checkbutton(printer_group,text='Cortar cada ticket (ESC/POS)',variable=cut).grid(row=3,column=0,columnspan=2,sticky='w',pady=6)
+        ttk.Combobox(printer_group,textvariable=cut_type,values=('Completo','Parcial'),width=12,state='readonly').grid(row=3,column=2,columnspan=2,sticky='w',padx=7)
         printer_group.columnconfigure(1,weight=1)
-        ttk.Label(page_print,text='La impresión consecutiva genera QR y número diferentes y envía todo el lote en un único trabajo RAW.\n'
-                                  'El corte físico requiere una ZYWELL con cortador y soporte ESC/POS.\n'
-                                  'El avance se puede ajustar para adaptar la separación sin desperdiciar papel.',
+        ttk.Label(page_print,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
+                                  'Corte automático: GS V 65, si la ZYWELL lo admite. Corte manual: ajusta el avance antes de la cuchilla.\n'
+                                  'Prueba primero 2 tickets; la distancia cabezal-cortador depende del modelo.',
                   wraplength=780,justify='left').pack(anchor='w',pady=8)
 
         art=ttk.LabelFrame(page_design,text='Plantilla horizontal e imágenes',padding=10)
@@ -750,6 +756,14 @@ def launch_gui():
                 return value
             except ValueError:
                 raise ValueError('El avance antes del corte debe estar entre 0 y 255 puntos.')
+        def ticket_length():
+            try:
+                value=int(length.get())
+                if not 85 <= value <= 190:
+                    raise ValueError()
+                return value
+            except ValueError:
+                raise ValueError('El largo del ticket debe estar entre 85 y 190 mm.')
 
         def current_design(save=False):
             d={k:v.get().strip() for k,v in variables.items()}
@@ -771,7 +785,8 @@ def launch_gui():
                     variables[key].set(str(destination))
                 save_ticket_design(event_id,d)
                 prefs_path.write_text(json.dumps({'ancho':int(roll.get()),'impresora':printer.get(),
-                    'corte_v04':cut.get(),'tipo_corte':cut_type.get(),'avance_corte':feed_amount()},ensure_ascii=False),encoding='utf-8')
+                    'corte_v04':cut.get(),'tipo_corte':cut_type.get(),'avance_corte':feed_amount(),
+                    'largo_ticket':ticket_length(),'modo_corte':cut_mode.get()},ensure_ascii=False),encoding='utf-8')
             return d
         def save_design():
             try:
@@ -786,7 +801,7 @@ def launch_gui():
             try:
                 d=current_design(save=True)
                 ev,tkdata=get_ticket(event_id,numbers[0])
-                image=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),d)
+                image=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),d,length_mm=ticket_length())
                 popup=tk.Toplevel(win)
                 popup.title(f'{d["plantilla"]} · Entrada {numbers[0]:04d}')
                 popup.geometry('1150x715')
@@ -822,7 +837,7 @@ def launch_gui():
                 viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
                 for i,template in enumerate(ticket_printer.TEMPLATES):
                     copy=dict(d);copy['plantilla']=template
-                    pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy)
+                    pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,length_mm=ticket_length())
                     pic.thumbnail((465,245))
                     photo=ImageTk.PhotoImage(pic)
                     box=ttk.LabelFrame(inner,text=template,padding=7)
@@ -848,7 +863,7 @@ def launch_gui():
                 target=filedialog.asksaveasfilename(parent=win,title='Guardar una entrada horizontal',
                      initialfile=f'Ticket_{numbers[0]:04d}_{roll.get()}mm.pdf',defaultextension='.pdf',filetypes=[('PDF','*.pdf')])
                 if target:
-                    ticket_printer.export_single_pdf(ev,tkdata,Path(target),int(roll.get()),d)
+                    ticket_printer.export_single_pdf(ev,tkdata,Path(target),int(roll.get()),d,length_mm=ticket_length())
                     note.set(f'PDF individual guardado: {target}')
             except Exception as ex:
                 messagebox.showerror('Guardar PDF',str(ex),parent=win)
@@ -877,7 +892,7 @@ def launch_gui():
                 return
             try:
                 d=current_design(save=True)
-                w=int(roll.get());c=bool(cut.get());fc=cut_type.get()=='Completo';advance=feed_amount()
+                w=int(roll.get());c=bool(cut.get());fc=cut_type.get()=='Completo';advance=feed_amount();mode=cut_mode.get();mm=ticket_length()
                 selected=printer.get()
                 pairs=[get_ticket(event_id,n) for n in numbers]
             except Exception as ex:
@@ -887,7 +902,7 @@ def launch_gui():
             note.set(f'Preparando {len(numbers)} entradas; no cierres este programa ni desconectes la impresora.')
             def worker():
                 try:
-                    job=ticket_printer.print_windows_escpos_batch(pairs,selected,w,d,c,full_cut=fc,feed_dots=advance)
+                    job=ticket_printer.print_windows_escpos_batch(pairs,selected,w,d,c,full_cut=fc,feed_dots=advance,cut_mode=mode,length_mm=mm)
                     def success():
                         if not win.winfo_exists():return
                         print_button.configure(state='normal')
@@ -911,7 +926,7 @@ def launch_gui():
         ttk.Button(actions,text='Probar corte',command=cutter_test).pack(side='left',padx=3)
         print_button=ttk.Button(actions,text='IMPRIMIR LOTE',command=print_batch,style='Action.TButton')
         print_button.pack(side='right',padx=3)
-        ttk.Label(outer,text='IMPRESIÓN REAL: usa «IMPRIMIR LOTE»; exportar a PDF no garantiza que el cortador funcione.',foreground='#7a4630').pack(anchor='w',pady=8)
+        ttk.Label(outer,text='Para calibrar: prueba dos entradas, comprueba el corte y ajusta 8-16 puntos cada vez. No imprimas grandes lotes hasta verificar.',foreground='#7a4630').pack(anchor='w',pady=8)
 
     zywell_btn.configure(command=open_thermal_ticket)
 

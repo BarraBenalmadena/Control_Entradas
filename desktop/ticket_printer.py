@@ -1,4 +1,4 @@
-"""Control de Entradas 0.4: entradas HORIZONTALES en rollo termico de 58/80 mm.
+"""Control de Entradas 0.6: entradas HORIZONTALES en rollo termico de 58/80 mm.
 
 El ticket terminado se lee en horizontal. En la ZYWELL se transmite girado 90º:
 la anchura fisica de papel es 58/80 mm, y el largo avanza hasta el corte.
@@ -148,7 +148,7 @@ def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar 
     im.paste(cropped,target)
 
 
-def render_landscape_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None) -> Image.Image:
+def render_landscape_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None, *, length_mm: int | None = None) -> Image.Image:
     '''Render de seis plantillas horizontales. QR intacto y zona segura de corte.'''
     if width_mm not in PRINTABLE_DOTS:
         raise ValueError('Ancho disponible: 58 u 80 mm.')
@@ -279,17 +279,35 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int=80, design:
     yq+=X(35)
     _center(ImageDraw.Draw(im),'1 PERSONA',(X(858),yq,W-X(10),yq+X(44)),X(27),bold=True,min_size=max(9,X(15)))
     _center(ImageDraw.Draw(im),'PROHIBIDA SU VENTA',(X(857),H-X(75),W-X(10),H-X(12)),X(16),bold=True,min_size=max(8,X(9)))
-    # Reducir ruido del JPG y convertir a blanco y negro ANTES de imprimir.
+    # Permitir un largo variable sin deformar el QR. Mantener íntegro el talón derecho
+    # (incluido QR y número), y comprimir/expandir SOLO el cuerpo del ticket.
+    if length_mm is not None:
+        if not isinstance(length_mm, int) or not (85 <= length_mm <= 190):
+            raise ValueError('Largo de ticket permitido: 85 a 190 mm.')
+        target_width = int(length_mm * 8)  # Resolución de impresora: 203 dpi, ~8 puntos/mm
+        stub_x = X(850)
+        stub_width = W - stub_x
+        if target_width < stub_width + X(480):
+            raise ValueError('Ticket demasiado corto para los datos y el QR.')
+        if target_width != W:
+            main = im.crop((0, 0, stub_x, H))
+            stub = im.crop((stub_x, 0, W, H))
+            result = Image.new('RGB', (target_width, H), 'white')
+            new_main_w = target_width - stub_width
+            result.paste(main.resize((new_main_w, H), Image.Resampling.LANCZOS), (0, 0))
+            result.paste(stub, (new_main_w, 0))
+            im = result
+    # Reducir ruido del JPG; aplicar tramado al tamaño FINAL, antes del RAW.
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 
-def render_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None) -> Image.Image:
-    """Para el RAW ESC/POS: ancho de 576/384 puntos, contenido girado 90 grados."""
-    img = render_landscape_ticket(event,ticket,width_mm,design)
+def render_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None, *, length_mm: int|None=None) -> Image.Image:
+    """Para RAW ESC/POS: ancho de 576/384 puntos, girado 90 grados."""
+    img = render_landscape_ticket(event,ticket,width_mm,design,length_mm=length_mm)
     return img.transpose(Image.Transpose.ROTATE_90)
 
 
-def export_single_pdf(event: dict, ticket: dict, path: Path, width_mm: int=80, design: dict|None=None) -> Path:
-    image = render_landscape_ticket(event,ticket,width_mm,design)
+def export_single_pdf(event: dict, ticket: dict, path: Path, width_mm: int=80, design: dict|None=None, *, length_mm: int|None=None) -> Path:
+    image = render_landscape_ticket(event,ticket,width_mm,design,length_mm=length_mm)
     # 203 dpi aprox: 8 dots/mm. En preview se muestra horizontal.
     w_mm,h_mm = (image.width/8,image.height/8)
     path = Path(path)
@@ -309,10 +327,20 @@ def list_windows_printers() -> list[str]:
         return []
 
 
-def _escpos_bytes(im: Image.Image, cut: bool=False, *, full_cut: bool=True, feed_dots: int=64) -> bytes:
-    '''Convertir una entrada a datos ESC/POS; avance calibrable antes del corte.'''
+CUT_MODES=('Manual (avance ajustable)', 'Automático (GS V 65)')
+
+
+def _escpos_bytes(im: Image.Image, cut: bool=False, *, full_cut: bool=True,
+                  feed_dots: int=120, cut_mode: str = CUT_MODES[0]) -> bytes:
+    '''Convertir a datos ESC/POS. Corte manual con avance, o corte automático del firmware.
+
+    IMPORTANTE: GS V 65/66 depende del soporte del modelo. No hay manera de
+    calibrar físicamente el cabezal y la cuchilla sin conocer esa distancia.
+    '''
     if not (0 <= int(feed_dots) <= 255):
         raise ValueError('Avance entre 0 y 255 puntos.')
+    if cut_mode not in CUT_MODES:
+        raise ValueError('Modo de corte no reconocido.')
     mono=im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG)
     w,h=mono.size
     if w%8 or not (0<w<=2048):
@@ -324,10 +352,15 @@ def _escpos_bytes(im: Image.Image, cut: bool=False, *, full_cut: bool=True, feed
         rows=stripe.height
         raw=bytes(b^0xff for b in stripe.tobytes())
         stream+=b'\x1d\x76\x30\x00'+bytes((stride&255,stride>>8,rows&255,rows>>8))+raw
-    if feed_dots:
-        stream+=b'\x1b\x4a'+bytes([int(feed_dots)])
-    if cut:
-        stream+=b'\x1d\x56'+(b'\x00' if full_cut else b'\x01')
+    if cut and cut_mode == CUT_MODES[1]:
+        # GS V 65/66 n=0: la impresora avanza hasta su propia posición
+        # de corte y corta, si esta variante del firmware está soportada.
+        stream += b'\x1d\x56' + (b'\x41' if full_cut else b'\x42') + b'\x00'
+    else:
+        if feed_dots:
+            stream += b'\x1b\x4a' + bytes([int(feed_dots)])
+        if cut:
+            stream += b'\x1d\x56' + (b'\x00' if full_cut else b'\x01')
     return bytes(stream)
 
 def send_raw(printer_name: str, payload: bytes, document='Control de Entradas'):
@@ -357,9 +390,10 @@ def send_raw(printer_name: str, payload: bytes, document='Control de Entradas'):
 
 def print_windows_escpos(event: dict, ticket: dict, printer_name: str,
                          width_mm: int=80, design: dict|None=None,
-                         cut: bool=True, *, full_cut=True, feed_dots: int=64):
-    image=render_ticket(event,ticket,width_mm,design)
-    raw=_escpos_bytes(image,cut=cut,full_cut=full_cut,feed_dots=feed_dots)
+                         cut: bool=True, *, full_cut=True, feed_dots: int=120,
+                         cut_mode: str = CUT_MODES[0], length_mm: int|None=None):
+    image=render_ticket(event,ticket,width_mm,design,length_mm=length_mm)
+    raw=_escpos_bytes(image,cut=cut,full_cut=full_cut,feed_dots=feed_dots,cut_mode=cut_mode)
     return send_raw(printer_name,raw,f'Entrada {int(ticket["number"]):04d} - {event["name"][:25]}')
 
 
@@ -372,7 +406,8 @@ def test_cutter(printer_name: str, *, full_cut: bool=True):
 
 
 def print_windows_escpos_batch(pairs, printer_name: str, width_mm: int=80, design: dict|None=None,
-                              cut: bool=True, *, full_cut: bool=True, feed_dots: int=64):
+                              cut: bool=True, *, full_cut: bool=True, feed_dots: int=120,
+                              cut_mode: str = CUT_MODES[0], length_mm: int|None=None):
     """Un único trabajo RAW para una secuencia numerada, con corte entre tickets.
 
     No se marcan las entradas como utilizadas: imprimir y validar son operaciones distintas.
@@ -386,7 +421,8 @@ def print_windows_escpos_batch(pairs, printer_name: str, width_mm: int=80, desig
         raise ValueError('Selecciona la impresora.')
     payload=bytearray()
     for event,ticket in pairs:
-        image=render_ticket(event,ticket,width_mm,design)
-        payload.extend(_escpos_bytes(image,cut=cut,full_cut=full_cut,feed_dots=feed_dots))
+        image=render_ticket(event,ticket,width_mm,design,length_mm=length_mm)
+        payload.extend(_escpos_bytes(image,cut=cut,full_cut=full_cut,
+                                     feed_dots=feed_dots,cut_mode=cut_mode))
     first,last=pairs[0][1]['number'],pairs[-1][1]['number']
     return send_raw(printer_name,bytes(payload),f'Entradas {first:04d}-{last:04d}')

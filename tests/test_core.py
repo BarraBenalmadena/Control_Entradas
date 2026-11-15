@@ -138,3 +138,37 @@ class SixDesignsAndBatchTests(unittest.TestCase):
         legacy=ticket_printer.render_landscape_ticket(event,ticket,80,{'poster_mode':'fondo'})
         explicit=ticket_printer.render_landscape_ticket(event,ticket,80,{'plantilla':ticket_printer.TEMPLATES[3]})
         self.assertEqual(legacy.tobytes(),explicit.tobytes())
+
+class CalibrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.init_db()
+
+    def test_largo_seleccionable_qr_se_mantiene_legible(self):
+        import cv2
+        import numpy as np
+        e=app.create_event('Ensayo de longitud','2027-10-15T20:00','libre',1)
+        event,ticket=app.get_ticket(e,1)
+        for paper in (58,80):
+            for length in ((90,105,120) if paper == 58 else (120,135,165)):
+                with self.subTest(paper=paper,length=length):
+                    img=ticket_printer.render_landscape_ticket(event,ticket,paper,{},length_mm=length)
+                    self.assertEqual(img.size,(length*8,ticket_printer.PRINTABLE_DOTS[paper]))
+                    gray=cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2GRAY)
+                    if paper==58:
+                        gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_NEAREST)
+                    decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
+                    self.assertEqual(decoded,ticket['qr'])
+
+    def test_corte_automatico_escpos(self):
+        from PIL import Image
+        image=Image.new('RGB',(576,120),'white')
+        manual=ticket_printer._escpos_bytes(image,cut=True,feed_dots=120,
+                                            cut_mode=ticket_printer.CUT_MODES[0])
+        automatic=ticket_printer._escpos_bytes(image,cut=True,feed_dots=120,
+                                               cut_mode=ticket_printer.CUT_MODES[1])
+        self.assertTrue(manual.endswith(b'\x1b\x4ax\x1d\x56\x00'))
+        self.assertTrue(automatic.endswith(b'\x1d\x56\x41\x00'))
+        self.assertNotIn(b'\x1b\x4ax',automatic)
+        with self.assertRaises(ValueError):
+            ticket_printer._escpos_bytes(image,cut=True,cut_mode='desconocido')
