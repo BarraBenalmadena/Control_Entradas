@@ -1,4 +1,4 @@
-"""Control de Entradas 0.1 - Servidor Windows y generador de PDF.
+"""Control de Entradas 0.3 - Servidor Windows y entradas para impresora térmica.
 
 Software de demostración para validar el flujo de entrada libre y numerada.
 Se usa ECDSA P-256 para verificar la autenticidad de los QR.
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -100,6 +100,10 @@ def init_db():
                 UNIQUE(event_id, number)
             );
             CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id);
+            CREATE TABLE IF NOT EXISTS ticket_design (
+                event_id TEXT PRIMARY KEY REFERENCES events(id),
+                data TEXT NOT NULL
+            );
         """)
 
 
@@ -146,6 +150,32 @@ def list_events():
                          (SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id) AS issued
                          FROM events e ORDER BY e.start_time DESC""").fetchall()
         return [dict(x) for x in rows]
+
+
+def get_ticket_design(event_id: str) -> dict:
+    with connect() as conn:
+        row = conn.execute('SELECT data FROM ticket_design WHERE event_id=?', (event_id,)).fetchone()
+    if not row:
+        return {}
+    try:
+        return json.loads(row['data'])
+    except (ValueError, TypeError):
+        return {}
+
+
+def save_ticket_design(event_id: str, design: dict):
+    with connect() as conn:
+        conn.execute('INSERT OR REPLACE INTO ticket_design(event_id,data) VALUES (?,?)',
+                     (event_id, json.dumps(design, ensure_ascii=False)))
+
+
+def get_ticket(event_id: str, number: int) -> tuple[dict, dict]:
+    with connect() as conn:
+        event = conn.execute('SELECT * FROM events WHERE id=?', (event_id,)).fetchone()
+        ticket = conn.execute('SELECT * FROM tickets WHERE event_id=? AND number=?', (event_id, number)).fetchone()
+    if event is None or ticket is None:
+        raise ValueError('No existe la entrada indicada para esa función.')
+    return dict(event), dict(ticket)
 
 
 def parse_qr(qr: str):
@@ -335,8 +365,8 @@ def launch_gui():
     import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v0.2")
-    root.geometry("1000x675")
+    root.title("Control de Entradas · v0.3")
+    root.geometry("1030x735")
     root.minsize(820, 550)
     style = ttk.Style()
     try:
@@ -350,7 +380,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.2", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.3", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -407,6 +437,9 @@ def launch_gui():
 
     helptext = tk.StringVar(value="Primero guarda una función. Después selecciónala en la tabla para ver, guardar o imprimir sus entradas.")
     ttk.Label(container, textvariable=helptext, foreground="#214f73", wraplength=940).pack(anchor="w", pady=(0, 5))
+
+    zywell_btn = ttk.Button(container, text="5 · TICKETS ZYWELL — imprimir UNA entrada, elegir JPG y logotipos", style="Action.TButton")
+    zywell_btn.pack(fill="x", pady=(0, 8))
 
     list_frame = ttk.LabelFrame(container, text="Funciones guardadas (selecciona una)", padding=9)
     list_frame.pack(fill="both", expand=True)
@@ -517,6 +550,193 @@ def launch_gui():
                 helptext.set("Pulsa Ctrl + P en la vista previa del PDF para imprimir con tu impresora.")
             except Exception as ex:
                 messagebox.showerror("No se pudo abrir la impresión", f"PDF generado en:\n{result[0]}\n\n{ex}")
+
+    def open_thermal_ticket():
+        event_id = selected_event()
+        if not event_id:
+            return
+        from tkinter import font as tkfont
+        import shutil
+        import ticket_printer
+
+        e = next((event for event in list_events() if event['id'] == event_id), None)
+        if e is None:
+            messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
+            return
+        win = tk.Toplevel(root)
+        win.title('Ticket ZYWELL · imprimir entrada individual')
+        win.geometry('740x685')
+        win.minsize(600, 595)
+        win.transient(root)
+        panel = ttk.Frame(win, padding=14)
+        panel.pack(fill='both', expand=True)
+        ttk.Label(panel, text='TICKETS PARA IMPRESORA ZYWELL', font=('Segoe UI', 15, 'bold')).pack(anchor='w')
+        ttk.Label(panel, text=f"{e['name']} · {e['capacity']} entradas · {e['mode']}").pack(anchor='w', pady=(0, 10))
+
+        config = get_ticket_design(event_id)
+        prefs_path = DATA_DIR / 'impresora.json'
+        try:
+            prefs = json.loads(prefs_path.read_text(encoding='utf-8'))
+        except (FileNotFoundError, ValueError):
+            prefs = {}
+        ticket_number = tk.StringVar(value='1')
+        width_value = tk.StringVar(value=str(prefs.get('ancho', '80')))
+        printer_names = ticket_printer.list_windows_printers()
+        printer_name = tk.StringVar(value=prefs.get('impresora', ''))
+        if not printer_name.get() and printer_names:
+            printer_name.set(next((p for p in printer_names if 'zywell' in p.lower() or 'pos-' in p.lower()), printer_names[0]))
+        cut_value = tk.BooleanVar(value=bool(prefs.get('corte', False)))
+        formticket = ttk.LabelFrame(panel, text='1. Elegir entrada y rollo', padding=9)
+        formticket.pack(fill='x')
+        ttk.Label(formticket, text='Número de entrada').grid(row=0, column=0, sticky='w')
+        tk.Spinbox(formticket, from_=1, to=e['capacity'], width=8, textvariable=ticket_number).grid(row=0, column=1, padx=6, sticky='w')
+        ttk.Label(formticket, text=f"de {e['capacity']}").grid(row=0, column=2, padx=(0, 18), sticky='w')
+        ttk.Label(formticket, text='Ancho del rollo').grid(row=0, column=3, sticky='w')
+        ttk.Combobox(formticket, textvariable=width_value, values=('58', '80'), width=6, state='readonly').grid(row=0, column=4, padx=6, sticky='w')
+        formticket.columnconfigure(2, weight=1)
+        ttk.Label(formticket, text='Impresora de Windows').grid(row=1, column=0, sticky='w', pady=6)
+        boxprinter = ttk.Combobox(formticket, textvariable=printer_name, values=printer_names, state='readonly', width=42)
+        boxprinter.grid(row=1, column=1, columnspan=4, sticky='ew', padx=6)
+        ttk.Checkbutton(formticket, text='Corte automático (solo si tu modelo lo admite)', variable=cut_value).grid(row=2, column=0, columnspan=5, sticky='w', pady=(4, 0))
+
+        artwork = ttk.LabelFrame(panel, text='2. Diseñar entrada (imágenes JPG/PNG opcionales)', padding=9)
+        artwork.pack(fill='x', pady=8)
+        variables = {
+            'cabecera': tk.StringVar(value=config.get('cabecera', 'Escuela Municipal de Música y Danza')),
+            'subtitulo': tk.StringVar(value=config.get('subtitulo', 'Arroyo de la Miel')),
+            'lugar': tk.StringVar(value=config.get('lugar', 'Casa de la Cultura - Arroyo de la Miel')),
+            'poster': tk.StringVar(value=config.get('poster', '')),
+            'logo_ayto': tk.StringVar(value=config.get('logo_ayto', '')),
+            'logo_centro': tk.StringVar(value=config.get('logo_centro', '')),
+        }
+        labels = {'cabecera': 'Cabecera', 'subtitulo': 'Subtítulo', 'lugar': 'Lugar',
+                  'poster': 'Cartel JPG del evento', 'logo_ayto': 'Logotipo Ayuntamiento',
+                  'logo_centro': 'Logotipo del centro'}
+        for idx, key in enumerate(variables):
+            ttk.Label(artwork, text=labels[key]).grid(row=idx, column=0, sticky='w', pady=4)
+            ttk.Entry(artwork, textvariable=variables[key], width=55).grid(row=idx, column=1, sticky='ew', padx=(6, 5))
+            if key in ('poster', 'logo_ayto', 'logo_centro'):
+                def choose(k=key):
+                    path = filedialog.askopenfilename(parent=win, title=labels[k],
+                        filetypes=[('Imágenes', '*.jpg *.jpeg *.png *.bmp *.webp')])
+                    if path:
+                        variables[k].set(path)
+                ttk.Button(artwork, text='Elegir...', command=choose).grid(row=idx, column=2)
+        artwork.columnconfigure(1, weight=1)
+        note_var = tk.StringVar(value='Cada pulsación imprime exactamente una entrada. La imagen térmica se convierte a blanco y negro.')
+        ttk.Label(panel, textvariable=note_var, wraplength=680, foreground='#214f73').pack(anchor='w', pady=(1, 6))
+
+        def pick_number():
+            try:
+                number = int(ticket_number.get())
+                if not 1 <= number <= e['capacity']:
+                    raise ValueError()
+                return number
+            except ValueError:
+                messagebox.showwarning('Número incorrecto', f'Escribe un número entre 1 y {e["capacity"]}.', parent=win)
+                return None
+
+        def current_design(save=False):
+            result = {key: val.get().strip() for key, val in variables.items()}
+            if save:
+                artwork_dir = DATA_DIR / 'imagenes' / event_id
+                artwork_dir.mkdir(parents=True, exist_ok=True)
+                for key in ('poster', 'logo_ayto', 'logo_centro'):
+                    image_path = result[key]
+                    if not image_path:
+                        continue
+                    source = Path(image_path)
+                    if not source.is_file():
+                        raise ValueError(f'No se encuentra la imagen: {source}')
+                    if source.suffix.lower() not in ('.jpg', '.jpeg', '.png', '.bmp', '.webp'):
+                        raise ValueError('Las imágenes deben ser JPG, PNG, BMP o WEBP.')
+                    new_path = artwork_dir / (key + source.suffix.lower())
+                    if source.resolve() != new_path.resolve():
+                        shutil.copyfile(source, new_path)
+                    result[key] = str(new_path)
+                    variables[key].set(str(new_path))
+                save_ticket_design(event_id, result)
+                prefs_path.write_text(json.dumps({'ancho': int(width_value.get()),
+                      'impresora': printer_name.get(), 'corte': cut_value.get()}, ensure_ascii=False), encoding='utf-8')
+                note_var.set('Diseño guardado. Las imágenes ya están copiadas dentro de ControlEntradas.')
+            return result
+
+        def selected_ticket():
+            n = pick_number()
+            if n is None:
+                return None
+            return get_ticket(event_id, n)
+
+        def save_design():
+            try:
+                current_design(save=True)
+                messagebox.showinfo('Diseño guardado', 'Configuración e imágenes guardadas para esta función.', parent=win)
+            except Exception as exc:
+                messagebox.showerror('No se pudo guardar', str(exc), parent=win)
+
+        def pdf_preview():
+            pair = selected_ticket()
+            if not pair:
+                return
+            try:
+                design = current_design(save=True)
+                preview_dir = DATA_DIR / 'Vistas_previas'
+                preview_dir.mkdir(parents=True, exist_ok=True)
+                path = preview_dir / f'Ticket_{event_id[:8]}_{pair[1]["number"]:04d}_{width_value.get()}mm.pdf'
+                ticket_printer.export_single_pdf(*pair, path, int(width_value.get()), design)
+                open_file(path)
+                note_var.set(f'PDF individual preparado: entrada {pair[1]["number"]:04d}.')
+            except Exception as exc:
+                messagebox.showerror('Error de vista previa', str(exc), parent=win)
+
+        def pdf_save():
+            pair = selected_ticket()
+            if not pair:
+                return
+            target = filedialog.asksaveasfilename(parent=win, title='Guardar una entrada',
+                initialfile=f'Ticket_{pair[1]["number"]:04d}_{width_value.get()}mm.pdf',
+                defaultextension='.pdf', filetypes=[('Documento PDF', '*.pdf')])
+            if target:
+                try:
+                    design = current_design(save=True)
+                    ticket_printer.export_single_pdf(*pair, Path(target), int(width_value.get()), design)
+                    note_var.set(f'PDF individual guardado: {target}')
+                except Exception as exc:
+                    messagebox.showerror('Error PDF', str(exc), parent=win)
+
+        def print_one():
+            pair = selected_ticket()
+            if not pair:
+                return
+            if not printer_name.get():
+                messagebox.showwarning('Impresora no seleccionada',
+                                       'Selecciona una impresora térmica instalada, o usa Guardar PDF individual.', parent=win)
+                return
+            if not messagebox.askyesno('Confirmar impresión individual',
+                    f'¿Enviar SOLO la entrada nº {pair[1]["number"]:04d} a {printer_name.get()}?\n'
+                    'Para una impresora térmica ESC/POS compatible.', parent=win):
+                return
+            try:
+                design = current_design(save=True)
+                job = ticket_printer.print_windows_escpos(*pair, printer_name.get(),
+                            int(width_value.get()), design, cut_value.get())
+                note_var.set(f'Entrada {pair[1]["number"]:04d} enviada a la cola de impresión. Trabajo: {job}.')
+                messagebox.showinfo('Enviado', 'Entrada enviada a la cola de impresión. Comprueba la salida en tu ZYWELL.', parent=win)
+            except Exception as exc:
+                messagebox.showerror('Impresión fallida',
+                   f'{exc}\n\nPuedes guardar el PDF individual e imprimirlo con el controlador de Windows.', parent=win)
+
+        buttons = ttk.Frame(panel)
+        buttons.pack(fill='x', pady=(6, 5))
+        ttk.Button(buttons, text='Guardar diseño', command=save_design).pack(side='left', padx=3)
+        ttk.Button(buttons, text='Vista previa (1 entrada)', command=pdf_preview).pack(side='left', padx=3)
+        ttk.Button(buttons, text='Guardar PDF individual', command=pdf_save).pack(side='left', padx=3)
+        ttk.Button(buttons, text='IMPRIMIR 1 TICKET', command=print_one, style='Action.TButton').pack(side='right', padx=3)
+        ttk.Label(panel, text='Nota: la impresión directa requiere una ZYWELL compatible con ESC/POS y el controlador instalado.\n'
+                              'Si la impresora es de etiquetas o no imprime RAW, utiliza el PDF individual.',
+                  foreground='#7a4630', wraplength=690).pack(anchor='w')
+
+    zywell_btn.configure(command=open_thermal_ticket)
 
     create_btn.configure(command=create)
     preview_btn.configure(command=preview)

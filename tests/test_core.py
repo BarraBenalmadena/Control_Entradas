@@ -10,6 +10,7 @@ os.environ["CONTROL_ENTRADAS_DATA"] = TEMP.name
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "desktop"))
 import control_entradas as app
+import ticket_printer
 
 class ControlEntradasTests(unittest.TestCase):
     @classmethod
@@ -33,6 +34,21 @@ class ControlEntradasTests(unittest.TestCase):
         pdf = Path(TEMP.name)/"salida.pdf"
         self.assertEqual(app.export_pdf(e,pdf),6)
         self.assertTrue(pdf.read_bytes().startswith(b"%PDF-"))
+    def test_thermal_single_ticket_both_widths(self):
+        e = app.create_event("Teatro prueba", "2027-03-04T18:00", "libre", 2)
+        event, ticket = app.get_ticket(e, 1)
+        app.save_ticket_design(e, {"cabecera": "Escuela Municipal", "subtitulo": "Arroyo de la Miel"})
+        self.assertEqual(app.get_ticket_design(e)["cabecera"], "Escuela Municipal")
+        for width, pixels in [(58, 384), (80, 576)]:
+            image = ticket_printer.render_ticket(event, ticket, width, app.get_ticket_design(e))
+            self.assertEqual(image.width, pixels)
+            pdf = Path(TEMP.name)/f"ticket_{width}.pdf"
+            ticket_printer.export_single_pdf(event, ticket, pdf, width, app.get_ticket_design(e))
+            self.assertTrue(pdf.read_bytes().startswith(b"%PDF-"))
+            command = ticket_printer._escpos_bytes(image, cut=False)
+            self.assertTrue(command.startswith(b"\x1b\x40"))
+            self.assertFalse(command.endswith(b"\x1d\x56\x42\x00"))
+
     def test_concurrent_double_scan(self):
         e=app.create_event("Simultáneo", "2027-03-03T19:00", "libre", 1)
         with app.connect() as conn:
