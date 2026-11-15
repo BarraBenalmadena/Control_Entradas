@@ -1,12 +1,12 @@
-# Control de Entradas · versión de prueba 0.1
+# Control de Entradas · versión de prueba 0.2
 
 **Proyecto piloto** para espectáculos de la Escuela Municipal de Música y Danza de Benalmádena. Software independiente; no es un sistema oficial del Ayuntamiento.
 
 ## Descargas compiladas
 
-En este repositorio, abrir **Actions** → **Compilar v0.1 - Windows y Android** → ejecución correcta → **Artifacts**. Se generan:
+En este repositorio, abrir **Actions** → **Compilar v0.2 - Windows y Android** → ejecución correcta → **Artifacts**. Se generan:
 
-- `ControlEntradas_Windows_v0.1` — programa `.exe` para Windows 10/11 (PyInstaller).
+- `ControlEntradas_Windows_v0.2` — programa `.exe` para Windows 10/11 (PyInstaller).
 - `ControlEntradas_Android_v0.1` — APK de prueba Android 8.0 o posterior, firmado con certificado *debug*, no distribuible en Google Play.
 
 **La APK de prueba no está destinada a uso público ni garantiza disponibilidad ininterrumpida.**
@@ -49,3 +49,15 @@ Sin venta de entradas, reservas nominales, control de reentrada, cambios de func
 - `tests/test_core.py`: validación concurrente, QR falsificados y PDF.
 
 Pruebas Python (en un entorno con las dependencias instaladas): `python -m unittest discover -s tests -v`.
+
+## Versión Windows 0.2: guardar y imprimir
+
+La barra de acciones se encuentra encima de la tabla de funciones, visible incluso con ventanas pequeñas.
+
+1. Introduce nombre, fecha y modalidad; pulsa **1 · Guardar función y generar entradas**. Se guardan automáticamente en `Documentos/ControlEntradas/entradas.sqlite3`.
+2. Selecciona la función de la tabla.
+3. Pulsa **2 · Vista previa** para abrir el PDF en tu visor predeterminado.
+4. Pulsa **3 · Guardar PDF** para elegir carpeta y nombre del documento.
+5. Pulsa **4 · Imprimir...**, luego **Ctrl + P** en el lector PDF. Desde allí eliges la impresora y las páginas.
+
+**Aviso:** No se ha implementado envío directo silencioso a impresora. La impresión utiliza el diálogo del visor PDF. La versión Android continúa siendo 0.1 y es compatible con el formato de QR v0.2 de Windows.
