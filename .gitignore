@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pem
+*.sqlite3
+*.sqlite3-*
+*.apk
+*.exe
+.gradle/
+build/
+dist/
+*.spec
+/local.properties
+android/local.properties
