@@ -248,3 +248,35 @@ class LayoutRegressionTests(unittest.TestCase):
             raw=mocked.call_args.args[1]
             self.assertEqual(raw.count(b'\x1d\x56\x41\x00'),3)
             self.assertEqual(raw.count(b'\x1b\x40'),1)
+
+
+class ZywellFirmwareCompatibilityTests(unittest.TestCase):
+    """Pruebas sin hardware: bytes RAW y secuenciación de cortes."""
+    def test_command_zywell_documentado_despues_de_todas_las_franjas(self):
+        from PIL import Image
+        img=Image.new('RGB',(576,525),'white')
+        raw=ticket_printer._escpos_bytes(img,cut=True,
+                     cut_mode=ticket_printer.CUT_MODES[2],feed_dots=240)
+        self.assertTrue(raw.endswith(b'\x1d\x56\x42\x00'))
+        self.assertFalse(raw.endswith(b'\x1d\x56\x41\x00'))
+        self.assertEqual(raw.count(b'\x1d\x76\x30\x00'),3)
+        pos=raw.rfind(b'\x1d\x76\x30\x00')
+        # última franja de 45 filas, 576/8 bytes por fila, 8 bytes cabecera
+        self.assertEqual(pos+8+45*72, len(raw)-4)
+
+    def test_avance_grande_se_fragmenta_sin_desbordamiento(self):
+        from PIL import Image
+        raw=ticket_printer._escpos_bytes(Image.new('RGB',(576,10),'white'),
+                cut=True, cut_mode=ticket_printer.CUT_MODES[0],feed_dots=520)
+        self.assertTrue(raw.endswith(b'\x1b\x4a\xff\x1b\x4a\xff\x1b\x4a\x0a\x1d\x56\x00'))
+        with self.assertRaises(ValueError):
+            ticket_printer._escpos_bytes(Image.new('RGB',(576,10),'white'),feed_dots=801)
+
+    def test_calibracion_corta_despues_de_imprimir_sin_usar_entradas(self):
+        from unittest.mock import patch
+        with patch.object(ticket_printer,'send_raw',return_value=77) as send:
+            self.assertEqual(ticket_printer.print_cut_calibration('TEST',80),77)
+            raw=send.call_args.args[1]
+            self.assertTrue(raw.endswith(b'\x1d\x56\x42\x00'))
+            self.assertEqual(raw.count(b'\x1d\x76\x30\x00'),2)
+            self.assertEqual(send.call_args.args[2],'Prueba ZYWELL - NO ES ENTRADA')

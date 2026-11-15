@@ -1,8 +1,8 @@
-# Control de Entradas · v0.7 (prototipo)
+# Control de Entradas · v0.8 (prototipo)
 
 Proyecto de pruebas para la Escuela Municipal de Música y Danza de Benalmádena. Permite generar entradas libres o numeradas con QR firmado y validación local en varios dispositivos Android.
 
-## Cambios v0.7: encuadre y corte
+## Cambios v0.8: encuadre y corte
 
 - **Seis diseños**: Clásico, Cartel protagonista, Panorámico, Fondo suave, Editorial y Mosaico.
 - **Longitud real**: cada diseño se genera directamente a la medida elegida, sin redimensionar posteriormente el texto, la fotografía o el QR. El PDF individual y el RAW ESC/POS utilizan el mismo lienzo.
@@ -14,7 +14,7 @@ Proyecto de pruebas para la Escuela Municipal de Música y Danza de Benalmádena
 
 ## Instalación y pruebas
 
-Windows: usar el EXE compilado de la sección GitHub Actions, artefacto `ControlEntradas_Windows_v0.7`, o compilar con `pyinstaller --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.7 desktop/control_entradas.py`.
+Windows: usar el EXE compilado de la sección GitHub Actions, artefacto `ControlEntradas_Windows_v0.8`, o compilar con `pyinstaller --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.8 desktop/control_entradas.py`.
 
 Pruebas de desarrollo: `pip install -r desktop/requirements.txt opencv-python-headless numpy` y `python -m unittest discover -s tests -v`.
 
@@ -27,3 +27,14 @@ Para calibrar: elige un ticket de 135 mm en rollo de 80 mm, **modo automático G
 **Importante**: no imprimir lotes grandes antes de verificar dos cortes consecutivos. El programa no marca entradas como usadas cuando solo se imprimen. Las funciones y ajustes previos se conservan.
 
 Prototipo independiente, no es un producto municipal oficial ni una solución de producción acreditada.
+
+
+## Corrección corte ZYWELL (0.8)
+
+- La versión anterior usaba `GS V 65` como corte automático; el manual de la serie POS-80XX documenta `GS V 66` con avance a la cuchilla y corte parcial, no garantiza `65` para todos los modelos.
+- El nuevo modo predeterminado **ZYWELL compatible (GS V 66)** se activa también al actualizar configuraciones antiguas con el automático genérico.
+- Botón **CALIBRAR ZYWELL**: tira pequeña, sin QR ni números de entrada, para comprobar que imprime por completo y ejecuta el corte al final.
+- Permanece disponible el modo manual (`ESC J` con avance ajustable hasta 800 puntos) y el modo genérico; no debe utilizarse el último sin comprobar que el modelo lo admite.
+- **No imprimir lotes grandes** hasta comprobar dos entradas reales. La compatibilidad del corte sigue condicionada al modelo y firmware; sin el modelo exacto no es posible garantizar la posición física.
+
+Referencia del comando: manual del fabricante ZYWELL POS-80XX, apartado `GS V m [n]`: https://www.zywell.com/Content/upload/pdf/202338268/r41cb4d8a-efd7-499a-a60c-f76882783040.pdf

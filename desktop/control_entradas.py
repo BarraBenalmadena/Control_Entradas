@@ -1,4 +1,4 @@
-"""Control de Entradas 0.6 - largo variable y corte con autocalibración alternativa.
+"""Control de Entradas 0.8 - largo variable y corte con autocalibración alternativa.
 
 Software de demostración para validar el flujo de entrada libre y numerada.
 Se usa ECDSA P-256 para verificar la autenticidad de los QR.
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -614,7 +614,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de 6 tickets · ZYWELL · v0.7')
+        win.title('Diseñador de 6 tickets · ZYWELL · v0.8')
         win.geometry('940x755')
         win.minsize(800,645)
         win.transient(root)
@@ -638,8 +638,13 @@ def launch_gui():
             printer.set(next((n for n in printers if 'zywell' in n.lower() or 'pos-' in n.lower()),printers[0]))
         cut=tk.BooleanVar(value=bool(prefs.get('corte_v04',True)))
         cut_type=tk.StringVar(value=prefs.get('tipo_corte','Completo'))
-        feed=tk.StringVar(value=str(prefs.get('avance_corte','120')))
-        cut_mode=tk.StringVar(value=prefs.get('modo_corte',ticket_printer.CUT_MODES[0]))
+        feed=tk.StringVar(value=str(prefs.get('avance_corte','240')))
+        legacy_mode=prefs.get('modo_corte')
+        # Perfiles anteriores probados sin exito: ofrecer compatibilidad ZYWELL
+        # por defecto en esta nueva version (se puede elegir manualmente otro).
+        if prefs.get('version_perfil_corte')!='0.8' or legacy_mode not in ticket_printer.CUT_MODES:
+            legacy_mode=ticket_printer.CUT_MODES[2]
+        cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
         if chosen not in ticket_printer.TEMPLATES:
@@ -692,15 +697,15 @@ def launch_gui():
         ttk.Label(printer_group,text='Largo del ticket (mm)').grid(row=1,column=2,sticky='w')
         ttk.Combobox(printer_group,textvariable=length,values=('90','105','120','125','135','150','165','180'),width=8).grid(row=1,column=3,sticky='w',padx=7)
         ttk.Label(printer_group,text='Modo de corte').grid(row=2,column=0,sticky='w',pady=7)
-        ttk.Combobox(printer_group,textvariable=cut_mode,values=ticket_printer.CUT_MODES,width=29,state='readonly').grid(row=2,column=1,sticky='w',padx=7)
+        ttk.Combobox(printer_group,textvariable=cut_mode,values=ticket_printer.CUT_MODES,width=34,state='readonly').grid(row=2,column=1,sticky='w',padx=7)
         ttk.Label(printer_group,text='Avance manual (puntos)').grid(row=2,column=2,sticky='w')
-        ttk.Combobox(printer_group,textvariable=feed,values=('0','48','64','80','96','104','112','120','128','144','160','184','200'),width=8).grid(row=2,column=3,sticky='w',padx=7)
+        ttk.Combobox(printer_group,textvariable=feed,values=('0','48','80','120','160','200','240','280','320','400'),width=8).grid(row=2,column=3,sticky='w',padx=7)
         ttk.Checkbutton(printer_group,text='Cortar cada ticket (ESC/POS)',variable=cut).grid(row=3,column=0,columnspan=2,sticky='w',pady=6)
         ttk.Combobox(printer_group,textvariable=cut_type,values=('Completo','Parcial'),width=12,state='readonly').grid(row=3,column=2,columnspan=2,sticky='w',padx=7)
         printer_group.columnconfigure(1,weight=1)
         ttk.Label(page_print,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
-                                  'Corte automático: GS V 65, si la ZYWELL lo admite. Corte manual: ajusta el avance antes de la cuchilla.\n'
-                                  'Prueba primero 2 tickets; la distancia cabezal-cortador depende del modelo.\n'
+                                  'ZYWELL compatible: GS V 66 0, corte PARCIAL con avance, según manual POS-80XX.\n'
+                                  'Primero usa Prueba de calibración; después imprime SOLO 2 tickets. El modelo importa.\n'
                                   'El largo determina el papel REAL; ya no deforma los elementos del diseño.',
                   wraplength=780,justify='left').pack(anchor='w',pady=8)
 
@@ -756,11 +761,11 @@ def launch_gui():
         def feed_amount():
             try:
                 value=int(feed.get())
-                if not 0<=value<=255:
+                if not 0<=value<=800:
                     raise ValueError()
                 return value
             except ValueError:
-                raise ValueError('El avance antes del corte debe estar entre 0 y 255 puntos.')
+                raise ValueError('El avance antes del corte debe estar entre 0 y 800 puntos.')
         def ticket_length():
             try:
                 value=int(length.get())
@@ -793,7 +798,8 @@ def launch_gui():
                 save_ticket_design(event_id,d)
                 prefs_path.write_text(json.dumps({'ancho':int(roll.get()),'impresora':printer.get(),
                     'corte_v04':cut.get(),'tipo_corte':cut_type.get(),'avance_corte':feed_amount(),
-                    'largo_ticket':ticket_length(),'modo_corte':cut_mode.get()},ensure_ascii=False),encoding='utf-8')
+                    'largo_ticket':ticket_length(),'modo_corte':cut_mode.get(),
+                    'version_perfil_corte':'0.8'},ensure_ascii=False),encoding='utf-8')
             return d
         def save_design():
             try:
@@ -885,6 +891,21 @@ def launch_gui():
                     note.set(f'PDF individual guardado: {target}')
             except Exception as ex:
                 messagebox.showerror('Guardar PDF',str(ex),parent=win)
+        def calibration_test():
+            if not printer.get():
+                messagebox.showwarning('Impresora','Selecciona primero la ZYWELL.',parent=win); return
+            if not messagebox.askyesno('Calibración ZYWELL',
+                'Imprimir UNA tira con cinco líneas de referencia y después cortar.\n'
+                'NO es una entrada real y no modifica las entradas guardadas.\n\n'
+                '¿Enviar la prueba de calibración a la impresora?',parent=win):
+                return
+            try:
+                job=ticket_printer.print_cut_calibration(printer.get(),int(roll.get()),
+                    cut_mode=cut_mode.get(),feed_dots=feed_amount())
+                note.set(f'Prueba de calibración enviada: trabajo {job}. Comprueba si la última línea está íntegra.')
+            except Exception as ex:
+                messagebox.showerror('Calibración',str(ex),parent=win)
+
         def cutter_test():
             if not printer.get():
                 messagebox.showwarning('Impresora','Selecciona primero la ZYWELL.',parent=win);return
@@ -941,10 +962,11 @@ def launch_gui():
         ttk.Button(actions,text='VER 6 DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
-        ttk.Button(actions,text='Probar corte',command=cutter_test).pack(side='left',padx=3)
+        ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
+        ttk.Button(actions,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=3)
         print_button=ttk.Button(actions,text='IMPRIMIR LOTE',command=print_batch,style='Action.TButton')
         print_button.pack(side='right',padx=3)
-        ttk.Label(outer,text='Para calibrar: prueba dos entradas, comprueba el corte y ajusta 8-16 puntos cada vez. No imprimas grandes lotes hasta verificar.',foreground='#7a4630').pack(anchor='w',pady=8)
+        ttk.Label(outer,text='Primero calibra con la tira de prueba. Usa el modo ZYWELL compatible; si no corta, necesitamos el modelo exacto.',foreground='#7a4630').pack(anchor='w',pady=8)
 
     zywell_btn.configure(command=open_thermal_ticket)
 

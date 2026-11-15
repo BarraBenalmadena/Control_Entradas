@@ -1,4 +1,4 @@
-"""Control de Entradas 0.7: entradas HORIZONTALES en rollo termico de 58/80 mm.
+"""Control de Entradas 0.8: entradas HORIZONTALES en rollo termico de 58/80 mm.
 
 El ticket terminado se lee en horizontal. En la ZYWELL se transmite girado 90º:
 la anchura fisica de papel es 58/80 mm, y el largo avanza hasta el corte.
@@ -345,18 +345,19 @@ def list_windows_printers() -> list[str]:
         return []
 
 
-CUT_MODES=('Manual (avance ajustable)', 'Automático (GS V 65)')
+CUT_MODES=('Manual (avance ajustable)', 'Automático genérico (GS V 65)', 'ZYWELL compatible (GS V 66)')
 
 
 def _escpos_bytes(im: Image.Image, cut: bool=False, *, full_cut: bool=True,
-                  feed_dots: int=120, cut_mode: str = CUT_MODES[0], reset: bool=True) -> bytes:
-    '''Convertir a datos ESC/POS. Corte manual con avance, o corte automático del firmware.
+                   feed_dots: int=240, cut_mode: str = CUT_MODES[0], reset: bool=True) -> bytes:
+    '''Convierte la imagen a raster ESC/POS, y corta SOLO despues de emitir toda la imagen.
 
-    IMPORTANTE: GS V 65/66 depende del soporte del modelo. No hay manera de
-    calibrar físicamente el cabezal y la cuchilla sin conocer esa distancia.
+    No usar GS V 65 como supuesto universal: el manual de la serie ZYWELL
+    POS-80XX documenta GS V 66 0 (corte parcial con avance a la cuchilla),
+    pero no GS V 65. Otros modelos pueden diferir.
     '''
-    if not (0 <= int(feed_dots) <= 255):
-        raise ValueError('Avance entre 0 y 255 puntos.')
+    if not (0 <= int(feed_dots) <= 800):
+        raise ValueError('Avance entre 0 y 800 puntos.')
     if cut_mode not in CUT_MODES:
         raise ValueError('Modo de corte no reconocido.')
     mono=im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG)
@@ -370,13 +371,21 @@ def _escpos_bytes(im: Image.Image, cut: bool=False, *, full_cut: bool=True,
         rows=stripe.height
         raw=bytes(b^0xff for b in stripe.tobytes())
         stream+=b'\x1d\x76\x30\x00'+bytes((stride&255,stride>>8,rows&255,rows>>8))+raw
-    if cut and cut_mode == CUT_MODES[1]:
+    if cut and cut_mode == CUT_MODES[2]:
+        # Modo documentado por ZYWELL POS-80XX; corte parcial,
+        # independientemente del flag de corte completo del driver.
+        stream += b'\x1d\x56\x42\x00'
+    elif cut and cut_mode == CUT_MODES[1]:
         # GS V 65/66 n=0: la impresora avanza hasta su propia posición
         # de corte y corta, si esta variante del firmware está soportada.
         stream += b'\x1d\x56' + (b'\x41' if full_cut else b'\x42') + b'\x00'
     else:
-        if feed_dots:
-            stream += b'\x1b\x4a' + bytes([int(feed_dots)])
+        # ESC J n admite n<=255; dividir para avances grandes con seguridad.
+        remaining = int(feed_dots)
+        while remaining:
+            step = min(remaining, 255)
+            stream += b'\x1b\x4a' + bytes([step])
+            remaining -= step
         if cut:
             stream += b'\x1d\x56' + (b'\x00' if full_cut else b'\x01')
     return bytes(stream)
@@ -408,11 +417,35 @@ def send_raw(printer_name: str, payload: bytes, document='Control de Entradas'):
 
 def print_windows_escpos(event: dict, ticket: dict, printer_name: str,
                          width_mm: int=80, design: dict|None=None,
-                         cut: bool=True, *, full_cut=True, feed_dots: int=120,
+                         cut: bool=True, *, full_cut=True, feed_dots: int=240,
                          cut_mode: str = CUT_MODES[0], length_mm: int|None=None):
     image=render_ticket(event,ticket,width_mm,design,length_mm=length_mm)
     raw=_escpos_bytes(image,cut=cut,full_cut=full_cut,feed_dots=feed_dots,cut_mode=cut_mode)
     return send_raw(printer_name,raw,f'Entrada {int(ticket["number"]):04d} - {event["name"][:25]}')
+
+
+
+def print_cut_calibration(printer_name: str, paper_mm: int=80,
+                          *, cut_mode: str=CUT_MODES[2], feed_dots: int=240):
+    """Imprime una tira de calibración SIN QR ni números de entrada.
+
+    Cinco bandas espaciadas en la dirección de avance permiten observar si
+    el controlador o la cuchilla están ignorando el final del raster. Se usa
+    una única secuencia RAW, sin reinicios intermedios.
+    """
+    if paper_mm not in PRINTABLE_DOTS:
+        raise ValueError('Rollo 58 u 80 mm.')
+    w = PRINTABLE_DOTS[paper_mm]
+    h = 400
+    img = Image.new('RGB', (w, h), 'white')
+    d = ImageDraw.Draw(img)
+    for y in (12, 100, 188, 276, 364):
+        d.line((20, y, w-21, y), fill='black', width=3)
+        d.text((23, y+7), f'CALIBRACION {y} puntos',font=font(20, True),fill='black')
+    d.rectangle((9, 5, w-10, h-8),outline='black',width=2)
+    raw = _escpos_bytes(img, cut=True, cut_mode=cut_mode,
+                        feed_dots=feed_dots, full_cut=False)
+    return send_raw(printer_name, raw, 'Prueba ZYWELL - NO ES ENTRADA')
 
 
 def test_cutter(printer_name: str, *, full_cut: bool=True):
@@ -424,7 +457,7 @@ def test_cutter(printer_name: str, *, full_cut: bool=True):
 
 
 def print_windows_escpos_batch(pairs, printer_name: str, width_mm: int=80, design: dict|None=None,
-                              cut: bool=True, *, full_cut: bool=True, feed_dots: int=120,
+                              cut: bool=True, *, full_cut: bool=True, feed_dots: int=240,
                               cut_mode: str = CUT_MODES[0], length_mm: int|None=None):
     """Un único trabajo RAW para una secuencia numerada, con corte entre tickets.
 
