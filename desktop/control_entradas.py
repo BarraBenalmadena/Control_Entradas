@@ -1,4 +1,4 @@
-"""Control de Entradas 0.3 - Servidor Windows y entradas para impresora térmica.
+"""Control de Entradas 0.4 - ticket horizontal, imágenes, eliminación y cortador.
 
 Software de demostración para validar el flujo de entrada libre y numerada.
 Se usa ECDSA P-256 para verificar la autenticidad de los QR.
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -150,6 +150,30 @@ def list_events():
                          (SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id) AS issued
                          FROM events e ORDER BY e.start_time DESC""").fetchall()
         return [dict(x) for x in rows]
+
+
+def delete_event(event_id: str) -> dict:
+    """Eliminación transaccional irreversible de función y todos sus tickets.
+
+    El cliente debe pedir confirmación explícita antes de llamar aquí.
+    """
+    with connect() as conn:
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute('SELECT id,name FROM events WHERE id=?', (event_id,)).fetchone()
+            if row is None:
+                conn.rollback()
+                raise ValueError('La función ya no existe.')
+            used = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=? AND used_at IS NOT NULL', (event_id,)).fetchone()[0]
+            issued = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=?', (event_id,)).fetchone()[0]
+            conn.execute('DELETE FROM ticket_design WHERE event_id=?', (event_id,))
+            conn.execute('DELETE FROM tickets WHERE event_id=?', (event_id,))
+            conn.execute('DELETE FROM events WHERE id=?', (event_id,))
+            conn.commit()
+            return {'name': row['name'], 'issued': issued, 'used': used}
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def get_ticket_design(event_id: str) -> dict:
@@ -365,8 +389,8 @@ def launch_gui():
     import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v0.3")
-    root.geometry("1030x735")
+    root.title("Control de Entradas · v0.4")
+    root.geometry("1050x740")
     root.minsize(820, 550)
     style = ttk.Style()
     try:
@@ -380,7 +404,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.3", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.4", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -426,20 +450,19 @@ def launch_gui():
     # These controls deliberately appear BEFORE the expandable table.
     toolbar = ttk.Frame(container)
     toolbar.pack(fill="x", pady=(12, 6))
-    create_btn = ttk.Button(toolbar, text="1 · Guardar función y generar entradas", style="Action.TButton")
+    create_btn = ttk.Button(toolbar, text="1 · Crear y guardar función", style="Action.TButton")
     create_btn.pack(side="left", padx=(0, 7))
     preview_btn = ttk.Button(toolbar, text="2 · Vista previa", style="Other.TButton")
-    preview_btn.pack(side="left", padx=(0, 7))
     save_btn = ttk.Button(toolbar, text="3 · Guardar PDF", style="Other.TButton")
-    save_btn.pack(side="left", padx=(0, 7))
     print_btn = ttk.Button(toolbar, text="4 · Imprimir...", style="Other.TButton")
-    print_btn.pack(side="left")
 
     helptext = tk.StringVar(value="Primero guarda una función. Después selecciónala en la tabla para ver, guardar o imprimir sus entradas.")
     ttk.Label(container, textvariable=helptext, foreground="#214f73", wraplength=940).pack(anchor="w", pady=(0, 5))
 
-    zywell_btn = ttk.Button(container, text="5 · TICKETS ZYWELL — imprimir UNA entrada, elegir JPG y logotipos", style="Action.TButton")
+    zywell_btn = ttk.Button(container, text="2 · DISEÑAR / VER / IMPRIMIR UNA ENTRADA HORIZONTAL (ZYWELL)", style="Action.TButton")
     zywell_btn.pack(fill="x", pady=(0, 8))
+    ttk.Label(container,text='Ticket de referencia: logo + imagen del espectáculo + número + QR pequeño. Papel 80/58 mm, corte opcional.',
+              foreground='#225778').pack(anchor='w', pady=(0,6))
 
     list_frame = ttk.LabelFrame(container, text="Funciones guardadas (selecciona una)", padding=9)
     list_frame.pack(fill="both", expand=True)
@@ -458,10 +481,12 @@ def launch_gui():
     ttk.Label(footer, text=f"Guardado automático en: {DATA_DIR}", foreground="#446274").pack(side="left")
     refresh_btn = ttk.Button(footer, text="Actualizar accesos")
     refresh_btn.pack(side="right")
+    delete_btn = ttk.Button(footer, text="Eliminar función seleccionada")
+    delete_btn.pack(side="right", padx=(0,10))
 
     def update_buttons(*_):
         state = "normal" if tree.selection() else "disabled"
-        for button in (preview_btn, save_btn, print_btn):
+        for button in (preview_btn, save_btn, print_btn, delete_btn, zywell_btn):
             button.configure(state=state)
 
     def refresh():
@@ -493,6 +518,31 @@ def launch_gui():
             messagebox.showwarning("Selecciona una función", "Haz clic sobre una función de la tabla antes de continuar.")
             return None
         return selected[0]
+
+    def delete_selected():
+        event_id = selected_event()
+        if not event_id:
+            return
+        e = next((ev for ev in list_events() if ev['id']==event_id), None)
+        if e is None:
+            refresh()
+            return
+        text = (f"Eliminar la función: {e['name']}\n\n"
+                f"Se eliminarán {e['issued']} entradas, incluidos {e['used']} accesos registrados.\n"
+                "La operación no se puede deshacer y sus códigos QR dejarán de ser válidos en el servidor.\n\n"
+                "¿Confirmas la eliminación definitiva?")
+        if not messagebox.askyesno('ELIMINAR FUNCIÓN',text,parent=root,icon='warning'):
+            return
+        try:
+            import shutil
+            delete_event(event_id)
+            imgs = DATA_DIR / 'imagenes' / event_id
+            if imgs.is_dir():
+                shutil.rmtree(imgs)
+            refresh()
+            helptext.set('Función eliminada. Puedes crear una nueva desde el formulario.')
+        except Exception as ex:
+            messagebox.showerror('No se pudo eliminar',str(ex),parent=root)
 
     def open_file(path):
         if sys.platform == "win32":
@@ -564,13 +614,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win = tk.Toplevel(root)
-        win.title('Ticket ZYWELL · imprimir entrada individual')
-        win.geometry('740x685')
-        win.minsize(600, 595)
+        win.title('Diseñador horizontal · ZYWELL · v0.4')
+        win.geometry('820x765')
+        win.minsize(720, 675)
         win.transient(root)
         panel = ttk.Frame(win, padding=14)
         panel.pack(fill='both', expand=True)
-        ttk.Label(panel, text='TICKETS PARA IMPRESORA ZYWELL', font=('Segoe UI', 15, 'bold')).pack(anchor='w')
+        ttk.Label(panel, text='ENTRADA HORIZONTAL · ZYWELL', font=('Segoe UI', 15, 'bold')).pack(anchor='w')
         ttk.Label(panel, text=f"{e['name']} · {e['capacity']} entradas · {e['mode']}").pack(anchor='w', pady=(0, 10))
 
         config = get_ticket_design(event_id)
@@ -585,7 +635,8 @@ def launch_gui():
         printer_name = tk.StringVar(value=prefs.get('impresora', ''))
         if not printer_name.get() and printer_names:
             printer_name.set(next((p for p in printer_names if 'zywell' in p.lower() or 'pos-' in p.lower()), printer_names[0]))
-        cut_value = tk.BooleanVar(value=bool(prefs.get('corte', False)))
+        cut_value = tk.BooleanVar(value=bool(prefs.get('corte_v04', True)))
+        cut_mode = tk.StringVar(value=prefs.get('tipo_corte', 'Completo'))
         formticket = ttk.LabelFrame(panel, text='1. Elegir entrada y rollo', padding=9)
         formticket.pack(fill='x')
         ttk.Label(formticket, text='Número de entrada').grid(row=0, column=0, sticky='w')
@@ -597,9 +648,10 @@ def launch_gui():
         ttk.Label(formticket, text='Impresora de Windows').grid(row=1, column=0, sticky='w', pady=6)
         boxprinter = ttk.Combobox(formticket, textvariable=printer_name, values=printer_names, state='readonly', width=42)
         boxprinter.grid(row=1, column=1, columnspan=4, sticky='ew', padx=6)
-        ttk.Checkbutton(formticket, text='Corte automático (solo si tu modelo lo admite)', variable=cut_value).grid(row=2, column=0, columnspan=5, sticky='w', pady=(4, 0))
+        ttk.Checkbutton(formticket, text='Enviar orden de corte ESC/POS tras CADA ticket', variable=cut_value).grid(row=2, column=0, columnspan=3, sticky='w', pady=(4, 0))
+        ttk.Combobox(formticket, textvariable=cut_mode,values=('Completo','Parcial'),state='readonly',width=11).grid(row=2,column=3,columnspan=2,pady=4,sticky='w')
 
-        artwork = ttk.LabelFrame(panel, text='2. Diseñar entrada (imágenes JPG/PNG opcionales)', padding=9)
+        artwork = ttk.LabelFrame(panel, text='2. Diseño HORIZONTAL: cartel, fondo, logotipos y textos', padding=9)
         artwork.pack(fill='x', pady=8)
         variables = {
             'cabecera': tk.StringVar(value=config.get('cabecera', 'Escuela Municipal de Música y Danza')),
@@ -608,13 +660,18 @@ def launch_gui():
             'poster': tk.StringVar(value=config.get('poster', '')),
             'logo_ayto': tk.StringVar(value=config.get('logo_ayto', '')),
             'logo_centro': tk.StringVar(value=config.get('logo_centro', '')),
+            'poster_mode': tk.StringVar(value='Fondo suave' if config.get('poster_mode') == 'fondo' else 'Cartel lateral'),
         }
         labels = {'cabecera': 'Cabecera', 'subtitulo': 'Subtítulo', 'lugar': 'Lugar',
                   'poster': 'Cartel JPG del evento', 'logo_ayto': 'Logotipo Ayuntamiento',
-                  'logo_centro': 'Logotipo del centro'}
+                  'logo_centro': 'Logotipo del centro', 'poster_mode': 'Posición de imagen'}
         for idx, key in enumerate(variables):
             ttk.Label(artwork, text=labels[key]).grid(row=idx, column=0, sticky='w', pady=4)
-            ttk.Entry(artwork, textvariable=variables[key], width=55).grid(row=idx, column=1, sticky='ew', padx=(6, 5))
+            if key == 'poster_mode':
+                ttk.Combobox(artwork,textvariable=variables[key],values=('Cartel lateral','Fondo suave'),
+                             state='readonly',width=27).grid(row=idx,column=1,sticky='w',padx=(6,5))
+            else:
+                ttk.Entry(artwork, textvariable=variables[key], width=55).grid(row=idx, column=1, sticky='ew', padx=(6, 5))
             if key in ('poster', 'logo_ayto', 'logo_centro'):
                 def choose(k=key):
                     path = filedialog.askopenfilename(parent=win, title=labels[k],
@@ -623,7 +680,7 @@ def launch_gui():
                         variables[k].set(path)
                 ttk.Button(artwork, text='Elegir...', command=choose).grid(row=idx, column=2)
         artwork.columnconfigure(1, weight=1)
-        note_var = tk.StringVar(value='Cada pulsación imprime exactamente una entrada. La imagen térmica se convierte a blanco y negro.')
+        note_var = tk.StringVar(value='Vista previa horizontal: el papel sale girado 90° y se lee apaisado al cortar. Impresión en blanco y negro.')
         ttk.Label(panel, textvariable=note_var, wraplength=680, foreground='#214f73').pack(anchor='w', pady=(1, 6))
 
         def pick_number():
@@ -638,6 +695,7 @@ def launch_gui():
 
         def current_design(save=False):
             result = {key: val.get().strip() for key, val in variables.items()}
+            result['poster_mode'] = 'fondo' if variables['poster_mode'].get() == 'Fondo suave' else 'lateral' 
             if save:
                 artwork_dir = DATA_DIR / 'imagenes' / event_id
                 artwork_dir.mkdir(parents=True, exist_ok=True)
@@ -657,7 +715,7 @@ def launch_gui():
                     variables[key].set(str(new_path))
                 save_ticket_design(event_id, result)
                 prefs_path.write_text(json.dumps({'ancho': int(width_value.get()),
-                      'impresora': printer_name.get(), 'corte': cut_value.get()}, ensure_ascii=False), encoding='utf-8')
+                      'impresora': printer_name.get(), 'corte_v04': cut_value.get(), 'tipo_corte': cut_mode.get()}, ensure_ascii=False), encoding='utf-8')
                 note_var.set('Diseño guardado. Las imágenes ya están copiadas dentro de ControlEntradas.')
             return result
 
@@ -673,6 +731,44 @@ def launch_gui():
                 messagebox.showinfo('Diseño guardado', 'Configuración e imágenes guardadas para esta función.', parent=win)
             except Exception as exc:
                 messagebox.showerror('No se pudo guardar', str(exc), parent=win)
+
+        def image_preview():
+            pair = selected_ticket()
+            if not pair:
+                return
+            try:
+                from PIL import ImageTk
+                d = current_design(save=True)
+                image = ticket_printer.render_landscape_ticket(*pair, int(width_value.get()), d)
+                popup = tk.Toplevel(win)
+                popup.title(f'Vista previa HORIZONTAL · Entrada {pair[1]["number"]:04d}')
+                popup.geometry('1130x720')
+                panel_preview = ttk.Frame(popup,padding=12)
+                panel_preview.pack(fill='both',expand=True)
+                image.thumbnail((1070,570))
+                photo = ImageTk.PhotoImage(image)
+                label = ttk.Label(panel_preview,image=photo)
+                label.image = photo
+                label.pack(anchor='center',pady=8)
+                ttk.Label(panel_preview,text='Representación en blanco y negro del ticket una vez cortado. Para imprimir usa «IMPRIMIR 1 TICKET».',
+                          wraplength=1030).pack(anchor='center',pady=6)
+                ttk.Button(panel_preview,text='Cerrar',command=popup.destroy).pack(pady=10)
+            except Exception as exc:
+                messagebox.showerror('Error de vista previa',str(exc),parent=win)
+
+        def test_cut():
+            if not printer_name.get():
+                messagebox.showwarning('Falta impresora','Selecciona la ZYWELL instalada.',parent=win)
+                return
+            if not messagebox.askyesno('Probar cortador',
+                '¿Enviar SOLO una orden de avance y corte a la impresora seleccionada?\n\n'
+                'Debe ser un modelo ESC/POS con cortador físico. No genera ningún ticket.',parent=win):
+                return
+            try:
+                job=ticket_printer.test_cutter(printer_name.get(),full_cut=cut_mode.get()=='Completo')
+                note_var.set(f'Orden de corte enviada al trabajo {job}. Comprueba si el mecanismo ha actuado físicamente.')
+            except Exception as ex:
+                messagebox.showerror('Prueba de cortador',str(ex),parent=win)
 
         def pdf_preview():
             pair = selected_ticket()
@@ -719,9 +815,9 @@ def launch_gui():
             try:
                 design = current_design(save=True)
                 job = ticket_printer.print_windows_escpos(*pair, printer_name.get(),
-                            int(width_value.get()), design, cut_value.get())
+                            int(width_value.get()), design, cut_value.get(), full_cut=cut_mode.get()=='Completo')
                 note_var.set(f'Entrada {pair[1]["number"]:04d} enviada a la cola de impresión. Trabajo: {job}.')
-                messagebox.showinfo('Enviado', 'Entrada enviada a la cola de impresión. Comprueba la salida en tu ZYWELL.', parent=win)
+                messagebox.showinfo('Enviado a Windows', 'Trabajo aceptado por la cola. No puede confirmarse desde aquí la impresión física ni el corte. Comprueba la ZYWELL.', parent=win)
             except Exception as exc:
                 messagebox.showerror('Impresión fallida',
                    f'{exc}\n\nPuedes guardar el PDF individual e imprimirlo con el controlador de Windows.', parent=win)
@@ -729,10 +825,12 @@ def launch_gui():
         buttons = ttk.Frame(panel)
         buttons.pack(fill='x', pady=(6, 5))
         ttk.Button(buttons, text='Guardar diseño', command=save_design).pack(side='left', padx=3)
-        ttk.Button(buttons, text='Vista previa (1 entrada)', command=pdf_preview).pack(side='left', padx=3)
-        ttk.Button(buttons, text='Guardar PDF individual', command=pdf_save).pack(side='left', padx=3)
+        ttk.Button(buttons, text='VISTA PREVIA HORIZONTAL', command=image_preview, style='Action.TButton').pack(side='left', padx=3)
+        ttk.Button(buttons, text='PDF horizontal', command=pdf_preview).pack(side='left', padx=3)
+        ttk.Button(buttons, text='Guardar PDF', command=pdf_save).pack(side='left', padx=3)
         ttk.Button(buttons, text='IMPRIMIR 1 TICKET', command=print_one, style='Action.TButton').pack(side='right', padx=3)
-        ttk.Label(panel, text='Nota: la impresión directa requiere una ZYWELL compatible con ESC/POS y el controlador instalado.\n'
+        ttk.Button(panel, text='Probar cortador (sin ticket)', command=test_cut).pack(anchor='w', pady=(7,2))
+        ttk.Label(panel, text='El corte NO se produce al imprimir un PDF: debe usarse IMPRIMIR 1 TICKET en modo ESC/POS.\n'
                               'Si la impresora es de etiquetas o no imprime RAW, utiliza el PDF individual.',
                   foreground='#7a4630', wraplength=690).pack(anchor='w')
 
@@ -743,6 +841,7 @@ def launch_gui():
     save_btn.configure(command=save_pdf)
     print_btn.configure(command=print_pdf)
     refresh_btn.configure(command=refresh)
+    delete_btn.configure(command=delete_selected)
     tree.bind("<<TreeviewSelect>>", update_buttons)
     refresh()
     try:
