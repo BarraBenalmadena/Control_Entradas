@@ -154,9 +154,24 @@ class CalibrationTests(unittest.TestCase):
                 with self.subTest(paper=paper,length=length):
                     img=ticket_printer.render_landscape_ticket(event,ticket,paper,{},length_mm=length)
                     self.assertEqual(img.size,(length*8,ticket_printer.PRINTABLE_DOTS[paper]))
-                    gray=cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2GRAY)
-                    if paper==58:
-                        gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_NEAREST)
+                    # Leer la región del talón, no toda la entrada. Con el largo
+                    # variable, OpenCV en Windows puede localizar un falso QR entre
+                    # líneas y fotografías del cuerpo; el lector real encuadra el QR.
+                    scale=img.height / 576
+                    px=lambda v:round(v*scale)
+                    original_width=ticket_printer.LANDSCAPE_SIZE[paper][0]
+                    stub_width=original_width-px(850)
+                    qr_image=ticket_printer._qr_image(ticket['qr'])
+                    stub_start=img.width-stub_width
+                    left=stub_start+px(856)-px(850)
+                    right=original_width-px(9)
+                    left+=(right-px(856)-qr_image.width)//2
+                    top=px(222)
+                    padding=3
+                    roi=np.asarray(img)[top-padding:top+qr_image.height+padding,
+                                       left-padding:left+qr_image.width+padding]
+                    self.assertGreater(roi.size,0)
+                    gray=cv2.cvtColor(roi,cv2.COLOR_RGB2GRAY)
                     decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
                     self.assertEqual(decoded,ticket['qr'])
 
