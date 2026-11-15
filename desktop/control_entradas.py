@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -332,67 +332,114 @@ def export_pdf(event_id: str, target: Path):
 def launch_gui():
     import tkinter as tk
     from tkinter import ttk, messagebox, filedialog
+    import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v0.1")
-    root.geometry("940x650")
-    root.minsize(750, 570)
+    root.title("Control de Entradas · v0.2")
+    root.geometry("1000x675")
+    root.minsize(820, 550)
     style = ttk.Style()
     try:
         style.theme_use("clam")
     except tk.TclError:
         pass
     root.configure(bg="#eef3f8")
-    container = ttk.Frame(root, padding=20)
-    container.pack(fill="both", expand=True)
-    ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 21, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.1", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 14))
-    net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=12)
-    net_frame.pack(fill="x")
-    urls = "   ·   ".join("http://"+ip+":"+str(PORT) for ip in lan_ips()) or "Consulta la dirección IPv4 del ordenador (ipconfig)"
-    ttk.Label(net_frame, text="Servidor: " + urls, wraplength=850).pack(anchor="w")
-    ttk.Label(net_frame, text="PIN de conexión: " + ACCESS_PIN, font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(5,0))
-    ttk.Label(net_frame, text="El ordenador debe permanecer encendido. Conecta todos los móviles a la misma Wi-Fi.").pack(anchor="w")
-    ttk.Separator(container).pack(fill="x", pady=12)
+    style.configure("Action.TButton", font=("Segoe UI", 10, "bold"), padding=(13, 9))
+    style.configure("Other.TButton", font=("Segoe UI", 10), padding=(10, 8))
 
-    form = ttk.LabelFrame(container, text="Nueva función", padding=12)
-    form.pack(fill="x")
+    container = ttk.Frame(root, padding=(16, 12))
+    container.pack(fill="both", expand=True)
+    ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.2", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+
+    net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
+    net_frame.pack(fill="x")
+    urls = "   ·   ".join("http://" + ip + ":" + str(PORT) for ip in lan_ips()) or "Consulta la dirección IPv4 del ordenador (ipconfig)"
+    ttk.Label(net_frame, text="Servidor: " + urls, wraplength=900).pack(anchor="w")
+    ttk.Label(net_frame, text="PIN de conexión: " + ACCESS_PIN, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+    ttk.Label(net_frame, text="El ordenador debe permanecer encendido; los móviles deben conectarse a la misma red local.").pack(anchor="w")
+
+    form = ttk.LabelFrame(container, text="1. Crear y guardar una función", padding=(10, 7))
+    form.pack(fill="x", pady=(9, 0))
     name = tk.StringVar()
     date = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y 19:00"))
     mode = tk.StringVar(value="libre")
     capacity = tk.StringVar(value="100")
     rows = tk.StringVar(value="10")
     seats = tk.StringVar(value="10")
-    ttk.Label(form, text="Nombre").grid(row=0, column=0, sticky="w", pady=4)
-    ttk.Entry(form, textvariable=name, width=38).grid(row=0, column=1, sticky="ew", padx=(6,20))
-    ttk.Label(form, text="Fecha y hora (dd/mm/aaaa hh:mm)").grid(row=0,column=2, sticky="w")
-    ttk.Entry(form, textvariable=date, width=23).grid(row=0,column=3,sticky="ew",padx=6)
-    ttk.Label(form,text="Modalidad").grid(row=1,column=0,sticky="w",pady=7)
-    ttk.Combobox(form, textvariable=mode, values=("libre","numerada"), state="readonly", width=19).grid(row=1,column=1,sticky="w",padx=6)
-    ttk.Label(form,text="Aforo libre").grid(row=1,column=2,sticky="w")
-    ttk.Entry(form,textvariable=capacity,width=8).grid(row=1,column=3,sticky="w",padx=6)
-    ttk.Label(form,text="Filas").grid(row=2,column=0,sticky="w")
-    ttk.Entry(form,textvariable=rows,width=8).grid(row=2,column=1,sticky="w",padx=6)
-    ttk.Label(form,text="Butacas por fila").grid(row=2,column=2,sticky="w")
-    ttk.Entry(form,textvariable=seats,width=8).grid(row=2,column=3,sticky="w",padx=6)
-    ttk.Label(form,text="En 'numerada', aforo = filas × butacas por fila.").grid(row=3,column=0,columnspan=4,sticky="w",pady=(3,0))
+    ttk.Label(form, text="Nombre").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Entry(form, textvariable=name, width=38).grid(row=0, column=1, sticky="ew", padx=(5, 15))
+    ttk.Label(form, text="Fecha y hora (dd/mm/aaaa hh:mm)").grid(row=0, column=2, sticky="w")
+    ttk.Entry(form, textvariable=date, width=21).grid(row=0, column=3, sticky="ew", padx=(5, 0))
+    ttk.Label(form, text="Modalidad").grid(row=1, column=0, sticky="w", pady=4)
+    ttk.Combobox(form, textvariable=mode, values=("libre", "numerada"), state="readonly", width=18).grid(row=1, column=1, sticky="w", padx=5)
+    ttk.Label(form, text="Aforo libre").grid(row=1, column=2, sticky="w")
+    capacity_entry = ttk.Entry(form, textvariable=capacity, width=9)
+    capacity_entry.grid(row=1, column=3, sticky="w", padx=5)
+    ttk.Label(form, text="Filas").grid(row=2, column=0, sticky="w")
+    rows_entry = ttk.Entry(form, textvariable=rows, width=9)
+    rows_entry.grid(row=2, column=1, sticky="w", padx=5)
+    ttk.Label(form, text="Butacas por fila").grid(row=2, column=2, sticky="w")
+    seats_entry = ttk.Entry(form, textvariable=seats, width=9)
+    seats_entry.grid(row=2, column=3, sticky="w", padx=5)
     form.columnconfigure(1, weight=1)
     form.columnconfigure(3, weight=1)
 
-    list_frame = ttk.LabelFrame(container, text="Funciones creadas", padding=12)
-    list_frame.pack(fill="both",expand=True,pady=(12,0))
+    def toggle_mode(*_):
+        is_free = mode.get() == "libre"
+        capacity_entry.configure(state="normal" if is_free else "disabled")
+        rows_entry.configure(state="disabled" if is_free else "normal")
+        seats_entry.configure(state="disabled" if is_free else "normal")
+    mode.trace_add("write", toggle_mode)
+    toggle_mode()
+
+    # These controls deliberately appear BEFORE the expandable table.
+    toolbar = ttk.Frame(container)
+    toolbar.pack(fill="x", pady=(12, 6))
+    create_btn = ttk.Button(toolbar, text="1 · Guardar función y generar entradas", style="Action.TButton")
+    create_btn.pack(side="left", padx=(0, 7))
+    preview_btn = ttk.Button(toolbar, text="2 · Vista previa", style="Other.TButton")
+    preview_btn.pack(side="left", padx=(0, 7))
+    save_btn = ttk.Button(toolbar, text="3 · Guardar PDF", style="Other.TButton")
+    save_btn.pack(side="left", padx=(0, 7))
+    print_btn = ttk.Button(toolbar, text="4 · Imprimir...", style="Other.TButton")
+    print_btn.pack(side="left")
+
+    helptext = tk.StringVar(value="Primero guarda una función. Después selecciónala en la tabla para ver, guardar o imprimir sus entradas.")
+    ttk.Label(container, textvariable=helptext, foreground="#214f73", wraplength=940).pack(anchor="w", pady=(0, 5))
+
+    list_frame = ttk.LabelFrame(container, text="Funciones guardadas (selecciona una)", padding=9)
+    list_frame.pack(fill="both", expand=True)
     cols = ("nombre", "fecha", "tipo", "aforo", "accesos")
-    tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=7, selectmode="browse")
-    for col,label,width in zip(cols,("Espectáculo","Fecha y hora","Modalidad","Aforo","Accesos"),(270,150,110,75,95)):
-        tree.heading(col,text=label)
-        tree.column(col,width=width,anchor="center" if col in ("aforo","accesos") else "w")
-    tree.pack(fill="both",expand=True)
+    tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=5, selectmode="browse")
+    for col, label, width in zip(cols, ("Espectáculo", "Fecha y hora", "Modalidad", "Aforo", "Accesos"), (300, 160, 110, 75, 95)):
+        tree.heading(col, text=label)
+        tree.column(col, width=width, anchor="center" if col in ("aforo", "accesos") else "w")
+    scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    scrollbar.pack(side="right", fill="y")
+    tree.pack(side="left", fill="both", expand=True)
+
+    footer = ttk.Frame(container)
+    footer.pack(fill="x", pady=(6, 0))
+    ttk.Label(footer, text=f"Guardado automático en: {DATA_DIR}", foreground="#446274").pack(side="left")
+    refresh_btn = ttk.Button(footer, text="Actualizar accesos")
+    refresh_btn.pack(side="right")
+
+    def update_buttons(*_):
+        state = "normal" if tree.selection() else "disabled"
+        for button in (preview_btn, save_btn, print_btn):
+            button.configure(state=state)
 
     def refresh():
+        previous = tree.selection()
         for iid in tree.get_children():
             tree.delete(iid)
         for ev in list_events():
-            tree.insert("","end",iid=ev["id"],values=(ev["name"], datetime.fromisoformat(ev["start_time"]).strftime("%d/%m/%Y %H:%M"), ev["mode"], ev["capacity"], f"{ev['used']} / {ev['issued']}"))
+            tree.insert("", "end", iid=ev["id"], values=(ev["name"], datetime.fromisoformat(ev["start_time"]).strftime("%d/%m/%Y %H:%M"), ev["mode"], ev["capacity"], f"{ev['used']} / {ev['issued']}"))
+        if previous and tree.exists(previous[0]):
+            tree.selection_set(previous[0])
+        update_buttons()
 
     def create():
         try:
@@ -401,40 +448,94 @@ def launch_gui():
             refresh()
             tree.selection_set(event_id)
             tree.see(event_id)
-            messagebox.showinfo("Función creada", "Función y entradas generadas correctamente. Selecciónala y exporta el PDF.")
+            update_buttons()
+            helptext.set("Función guardada. Pulsa 'Vista previa' para ver las entradas, 'Guardar PDF' para exportarlas o 'Imprimir...' para elegir impresora.")
+            messagebox.showinfo("Guardado correctamente", "Función y entradas guardadas automáticamente.\n\nAhora puedes pulsar '2 · Vista previa' para verlas antes de imprimir.")
         except Exception as ex:
-            messagebox.showerror("No se pudo crear",str(ex))
+            messagebox.showerror("No se pudo guardar", str(ex))
 
-    def export():
+    def selected_event():
         selected = tree.selection()
         if not selected:
-            messagebox.showwarning("Selecciona una función","Selecciona primero una función de la tabla.")
+            messagebox.showwarning("Selecciona una función", "Haz clic sobre una función de la tabla antes de continuar.")
+            return None
+        return selected[0]
+
+    def open_file(path):
+        if sys.platform == "win32":
+            os.startfile(str(path))
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+
+    def preview_file():
+        event_id = selected_event()
+        if not event_id:
+            return None
+        try:
+            preview_dir = DATA_DIR / "Vistas_previas"
+            preview_dir.mkdir(exist_ok=True)
+            path = preview_dir / f"Entradas_{event_id[:8]}.pdf"
+            amount = export_pdf(event_id, path)
+            return path, amount
+        except Exception as ex:
+            messagebox.showerror("Error al preparar el PDF", str(ex))
+            return None
+
+    def preview():
+        result = preview_file()
+        if result:
+            try:
+                open_file(result[0])
+                helptext.set(f"Vista previa abierta ({result[1]} entradas). En el lector de PDF puedes ampliar y pasar páginas.")
+            except Exception as ex:
+                messagebox.showerror("No se pudo abrir", f"El PDF se guardó en:\n{result[0]}\n\nError: {ex}")
+
+    def save_pdf():
+        event_id = selected_event()
+        if not event_id:
             return
-        target = filedialog.asksaveasfilename(title="Guardar entradas en PDF", initialdir=str(DATA_DIR), initialfile="Entradas_"+selected[0][:8]+".pdf",defaultextension=".pdf",filetypes=[("PDF", "*.pdf")])
+        filename = "Entradas_" + event_id[:8] + ".pdf"
+        target = filedialog.asksaveasfilename(title="Guardar entradas en PDF", initialdir=str(DATA_DIR), initialfile=filename,
+                                              defaultextension=".pdf", filetypes=[("Documento PDF", "*.pdf")])
         if target:
             try:
-                qty = export_pdf(selected[0],Path(target))
-                messagebox.showinfo("PDF generado",f"Se han exportado {qty} entradas a:\n{target}")
+                qty = export_pdf(event_id, Path(target))
+                helptext.set(f"PDF guardado: {target} ({qty} entradas).")
+                if messagebox.askyesno("PDF guardado", f"Se han guardado {qty} entradas en:\n{target}\n\n¿Quieres abrirlo para verlas?"):
+                    open_file(Path(target))
             except Exception as ex:
-                messagebox.showerror("Error al exportar",str(ex))
+                messagebox.showerror("No se pudo guardar el PDF", str(ex))
 
-    actions = ttk.Frame(container)
-    actions.pack(fill="x",pady=10)
-    ttk.Button(actions,text="+ Crear función",command=create).pack(side="left")
-    ttk.Button(actions,text="Exportar entradas PDF",command=export).pack(side="left",padx=9)
-    ttk.Button(actions,text="Actualizar accesos",command=refresh).pack(side="left")
-    ttk.Label(actions,text=f"Datos locales: {DATA_DIR}").pack(side="right")
+    def print_pdf():
+        result = preview_file()
+        if result:
+            messagebox.showinfo("Elegir impresora", "Se abrirá el PDF con las entradas.\n\nPulsa Ctrl + P en el visor para elegir tu impresora de Windows, las páginas y el número de copias.")
+            try:
+                open_file(result[0])
+                helptext.set("Pulsa Ctrl + P en la vista previa del PDF para imprimir con tu impresora.")
+            except Exception as ex:
+                messagebox.showerror("No se pudo abrir la impresión", f"PDF generado en:\n{result[0]}\n\n{ex}")
+
+    create_btn.configure(command=create)
+    preview_btn.configure(command=preview)
+    save_btn.configure(command=save_pdf)
+    print_btn.configure(command=print_pdf)
+    refresh_btn.configure(command=refresh)
+    tree.bind("<<TreeviewSelect>>", update_buttons)
     refresh()
     try:
         server = start_server()
     except OSError as ex:
-        messagebox.showerror("Servidor no disponible",f"No se puede iniciar el servidor local en puerto {PORT}: {ex}")
+        messagebox.showerror("Servidor no disponible", f"No se puede iniciar el servidor local en puerto {PORT}: {ex}")
         return
+
     def close():
         server.shutdown()
         server.server_close()
         root.destroy()
-    root.protocol("WM_DELETE_WINDOW",close)
+    root.protocol("WM_DELETE_WINDOW", close)
     root.mainloop()
 
 
