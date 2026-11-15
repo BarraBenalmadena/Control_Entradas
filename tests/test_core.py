@@ -13,20 +13,19 @@ import control_entradas as app
 import ticket_printer
 
 
-def assert_qr_not_deformed(testcase, img, raw_qr, paper_mm):
-    """Verifica todos los módulos QR como imagen bit a bit, sin interpolación."""
+def assert_qr_not_deformed(testcase, img, raw_qr, paper_mm, design=None):
+    """Comprueba el QR sin interpolación en la nueva geometría de impresión."""
     import numpy as np
     qr=ticket_printer._qr_image(raw_qr)
-    sc=img.height/576.0
-    px=lambda n:round(n*sc)
-    right_safe=max(13,px(30))
-    divider=img.width-right_safe-px(224)
-    left=divider+px(8)
-    right=img.width-right_safe-px(4)
+    g=ticket_printer.geometry(paper_mm,img.width//8,design)
+    s=img.height/576.0
+    left=g['divider']+round(8*s)
+    right=img.width-g['right_limit']-round(4*s)
     x=(left+right-qr.width)//2
-    y=px(211)
+    y=g['T']+round(207*g['sx'])
     cropped=np.asarray(img)[y:y+qr.height,x:x+qr.width]
-    testcase.assertTrue(np.array_equal(cropped, np.asarray(qr)), 'El QR ha sido deformado')
+    testcase.assertTrue(np.array_equal(cropped,np.asarray(qr)),'El QR ha sido deformado')
+
 
 class ControlEntradasTests(unittest.TestCase):
     @classmethod
@@ -109,7 +108,7 @@ class SixDesignsAndBatchTests(unittest.TestCase):
     def setUpClass(cls):
         app.init_db()
 
-    def test_six_horizontal_templates_scannable_at_58_and_80(self):
+    def test_ten_horizontal_templates_scannable_at_58_and_80(self):
         import cv2
         import numpy as np
         from PIL import Image, ImageDraw
@@ -175,12 +174,12 @@ class CalibrationTests(unittest.TestCase):
                     qr_image=ticket_printer._qr_image(ticket['qr'])
                     scale=img.height / 576
                     px=lambda x:round(x*scale)
-                    safe=max(13,px(30))
-                    divider=img.width-safe-px(224)
+                    g=ticket_printer.geometry(paper,length,{})
+                    divider=g['divider']
                     stub_left=divider+px(8)
-                    stub_right=img.width-safe-px(4)
+                    stub_right=img.width-g['right_limit']-px(4)
                     x=(stub_left+stub_right-qr_image.width)//2
-                    y=px(211)
+                    y=g['T']+round(207*g['sx'])
                     roi=np.asarray(img)[y-3:y+qr_image.height+3,
                                        x-3:x+qr_image.width+3]
                     gray=cv2.cvtColor(roi,cv2.COLOR_RGB2GRAY)
@@ -280,3 +279,69 @@ class ZywellFirmwareCompatibilityTests(unittest.TestCase):
             self.assertTrue(raw.endswith(b'\x1d\x56\x42\x00'))
             self.assertEqual(raw.count(b'\x1d\x76\x30\x00'),2)
             self.assertEqual(send.call_args.args[2],'Prueba ZYWELL - NO ES ENTRADA')
+class TenDesignsAndMarginTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.init_db()
+
+    def test_ten_templates_and_six_logo_positions(self):
+        from PIL import Image, ImageDraw
+        poster_path=Path(TEMP.name)/'test_poster_v09.png'
+        logo1=Path(TEMP.name)/'test_logo1_v09.png'
+        logo2=Path(TEMP.name)/'test_logo2_v09.png'
+        poster=Image.new('RGB',(480,350),'white')
+        d=ImageDraw.Draw(poster)
+        d.rectangle((10,10,470,340),fill='#888888')
+        d.ellipse((100,50,350,300),fill='#111111')
+        poster.save(poster_path)
+        for path,fill in ((logo1,'black'),(logo2,'#444444')):
+            im=Image.new('RGB',(120,120),'white')
+            ImageDraw.Draw(im).ellipse((6,6,114,114),fill=fill)
+            im.save(path)
+        e=app.create_event('Gala de Danza de la Escuela Municipal','2027-12-20T19:00','libre',1)
+        event,ticket=app.get_ticket(e,1)
+        images=[]
+        self.assertEqual(len(ticket_printer.TEMPLATES),10)
+        for template in ticket_printer.TEMPLATES:
+            for position in ticket_printer.LOGO_POSITIONS:
+                with self.subTest(template=template,logos=position):
+                    design={'plantilla':template,'posicion_logos':position,
+                            'poster':str(poster_path),'logo_ayto':str(logo1),'logo_centro':str(logo2),
+                            'margen_izquierdo_mm':'2','margen_derecho_mm':'3',
+                            'margen_superior_mm':'1','margen_inferior_mm':'2'}
+                    img=ticket_printer.render_landscape_ticket(event,ticket,80,design,length_mm=135)
+                    self.assertEqual(img.size,(1080,576))
+                    assert_qr_not_deformed(self,img,ticket['qr'],80,design)
+                    if position=='Según plantilla': images.append(img.tobytes())
+        self.assertEqual(len(set(images)),10,'Las diez plantillas deben ser composiciones distintas')
+
+    def test_margins_change_physical_whitespace_and_keep_ticket_length(self):
+        e=app.create_event('Ensayo de márgenes','2027-10-24T19:00','libre',1)
+        event,ticket=app.get_ticket(e,1)
+        small={'margen_izquierdo_mm':'1','margen_derecho_mm':'1'}
+        large={'margen_izquierdo_mm':'12','margen_derecho_mm':'12'}
+        a=ticket_printer.render_landscape_ticket(event,ticket,80,small,length_mm=150)
+        b=ticket_printer.render_landscape_ticket(event,ticket,80,large,length_mm=150)
+        self.assertEqual(a.size,b.size)
+        self.assertNotEqual(a.tobytes(),b.tobytes())
+        self.assertEqual(b.crop((0,0,90,b.height)).getextrema(),((255,255),)*3)
+        self.assertEqual(b.crop((b.width-90,0,b.width,b.height)).getextrema(),((255,255),)*3)
+        assert_qr_not_deformed(self,b,ticket['qr'],80,large)
+        with self.assertRaises(ValueError):
+            ticket_printer.geometry(80,120,{'margen_izquierdo_mm':'19'})
+        with self.assertRaises(ValueError):
+            ticket_printer.geometry(80,120,{'margen_superior_mm':'50'})
+
+    def test_custom_fonts_and_vertical_margins(self):
+        e=app.create_event('Gala','2027-10-24T19:00','libre',1)
+        ev,t=app.get_ticket(e,1)
+        custom={'margen_superior_mm':'5','margen_inferior_mm':'4',
+                'tamano_letra_pct':'130','tamano_cabecera_pct':'90','tamano_fecha_pct':'120'}
+        img=ticket_printer.render_landscape_ticket(ev,t,80,custom,length_mm=145)
+        self.assertEqual(img.crop((0,0,img.width,24)).getextrema(),((255,255),)*3)
+        assert_qr_not_deformed(self,img,t['qr'],80,custom)
+        with self.assertRaises(ValueError):
+            ticket_printer.render_landscape_ticket(ev,t,80,{'tamano_fecha_pct':'200'})
+
+if __name__ == '__main__':
+    unittest.main()

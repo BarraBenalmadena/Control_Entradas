@@ -1,4 +1,4 @@
-"""Control de Entradas 0.8: entradas HORIZONTALES en rollo termico de 58/80 mm.
+"""Control de Entradas 0.9: entradas HORIZONTALES en rollo termico de 58/80 mm.
 
 El ticket terminado se lee en horizontal. En la ZYWELL se transmite girado 90º:
 la anchura fisica de papel es 58/80 mm, y el largo avanza hasta el corte.
@@ -124,9 +124,24 @@ TEMPLATES = (
     '04 · Fondo suave',
     '05 · Editorial',
     '06 · Mosaico',
+    '07 · Institucional',
+    '08 · Escenario',
+    '09 · Tríptico',
+    '10 · Minimalista',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
+LOGO_POSITIONS = (
+    'Según plantilla', 'Extremos', 'Juntos a la izquierda', 'Juntos a la derecha',
+    'Apilados a la izquierda', 'Apilados a la derecha', 'Centrados',
+)
+# La selección por plantilla ofrece composiciones distintas incluso antes de ajustar los logos.
+DEFAULT_LOGO_POSITIONS = (
+    'Extremos', 'Juntos a la izquierda', 'Extremos', 'Centrados',
+    'Juntos a la derecha', 'Extremos', 'Juntos a la izquierda',
+    'Apilados a la derecha', 'Juntos a la derecha', 'Centrados',
+)
+
 
 
 def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar y recortar', soften=0.0):
@@ -148,174 +163,241 @@ def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar 
     im.paste(cropped,target)
 
 
+def _setting_number(design: dict, field: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(str(design.get(field, default) or default).replace(',', '.'))
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f'El valor de {field} debe ser numérico.') from exc
+    if not math.isfinite(number) or not minimum <= number <= maximum:
+        raise ValueError(f'{field}: elige un valor entre {minimum:g} y {maximum:g}.')
+    return number
+
+
+def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -> dict:
+    """Geometría compartida por vista previa, PDF y trama ESC/POS (8 puntos/mm).
+
+    Los márgenes izquierdo y derecho siguen el sentido de avance del papel
+    en una entrada horizontal; superior e inferior son los márgenes del ancho útil.
+    """
+    design = design or {}
+    if width_mm not in PRINTABLE_DOTS:
+        raise ValueError('Selecciona papel de 58 u 80 mm.')
+    if length_mm is not None and (not isinstance(length_mm, int) or not 85 <= length_mm <= 190):
+        raise ValueError('Largo del ticket: 85–190 mm.')
+    W = (length_mm if length_mm is not None else (135 if width_mm == 80 else 90))*8
+    H = PRINTABLE_DOTS[width_mm]
+    margin_left = _setting_number(design,'margen_izquierdo_mm',2.0,0,18)
+    margin_right = _setting_number(design,'margen_derecho_mm',2.0,0,18)
+    margin_top = _setting_number(design,'margen_superior_mm',1.0,0,12)
+    margin_bottom = _setting_number(design,'margen_inferior_mm',1.0,0,12)
+    shift = _setting_number(design,'desplazamiento_mm',0,-3,3)
+    L = max(8, round((margin_left+shift)*8))
+    right_limit = max(8, round((margin_right-shift)*8))
+    T = max(3,round(margin_top*8))
+    B = max(3,round(margin_bottom*8))
+    if H-T-B<205:
+        raise ValueError('Márgenes superior e inferior demasiado grandes para el QR.')
+    sx = (H-T-B)/576
+    stub = round(224 * H/576)
+    divider = W-right_limit-stub
+    R = divider-round(8*H/576)
+    usable = R-L
+    if usable < round(550*H/576):
+        raise ValueError('No cabe el contenido: reduce márgenes o aumenta el largo del ticket.')
+    return dict(W=W,H=H,L=L,R=R,T=T,B=B,divider=divider,right_limit=right_limit,
+                sx=sx,usable=usable,stub=stub)
+
+
 def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
                             design: dict | None = None, *, length_mm: int | None = None) -> Image.Image:
-    """Renderiza en coordenadas del papel FINAL; no redimensiona textos ni QR.
-
-    X es la dirección de avance de la impresora después del giro de 90 grados.
-    Se reserva un margen blanco en ambos extremos para tolerancias de corte.
-    La altura coincide con el ancho imprimible real (576/384 puntos).
-    """
-    if width_mm not in PRINTABLE_DOTS:
-        raise ValueError('Selecciona un rollo de 58 u 80 mm.')
-    if length_mm is not None and (not isinstance(length_mm, int) or not 85 <= length_mm <= 190):
-        raise ValueError('Longitud permitida: 85 a 190 mm.')
+    """Render idéntico para PDF y RAW ESC/POS. QR preservado a píxeles nativos."""
     design = design or {}
-    H = PRINTABLE_DOTS[width_mm]
-    W = int((length_mm or (135 if width_mm == 80 else 90)) * 8)
-    s = H / 576.0
-    v = lambda n: int(round(n*s))
-    safe = max(13, v(30))    # Bordes blancos ~2.5-4 mm; no enmarcar sobre la cuchilla.
-    try:
-        shift_mm = float(design.get('desplazamiento_mm', 0) or 0)
-    except (ValueError, TypeError) as exc:
-        raise ValueError('El desplazamiento del diseño debe ser un número.') from exc
-    if not -3 <= shift_mm <= 3:
-        raise ValueError('El desplazamiento permitido es entre -3 y +3 mm.')
-    shift = round(shift_mm * 8)
-    left_safe, right_safe = safe + shift, safe - shift
-    qrstub = v(224)
-    divider = W - right_safe - qrstub
-    L, R = left_safe, divider-v(8)
-    usable = R - L
-    if usable < v(590):
-        min_length = math.ceil((v(590)+v(224)+2*safe+v(8))/8)
-        raise ValueError(f'El ticket de {width_mm} mm necesita un largo de al menos {min_length} mm para mantener el QR y el texto legibles.')
-    if R <= L:
-        raise ValueError('No queda espacio para el cuerpo de la entrada.')
-
-    chosen = str(design.get('plantilla') or '')
+    g = geometry(width_mm,length_mm,design)
+    W,H,L,R,T,B = (g[x] for x in ('W','H','L','R','T','B'))
+    divider,usable = g['divider'],g['usable']
+    scale = g['sx']
+    xunit = H/576.0
+    sz = lambda n: max(1,round(n*scale))
+    xu = lambda n: round(n*xunit)
+    y = lambda n: T+round(n*scale)
+    chosen=str(design.get('plantilla') or '')
     if chosen not in TEMPLATES:
         chosen = TEMPLATES[3] if design.get('poster_mode') == 'fondo' else TEMPLATES[0]
-    kind = TEMPLATES.index(chosen)
-    fit = design.get('ajuste_imagen', IMAGE_FITS[0])
-    if fit not in IMAGE_FITS:
-        fit = IMAGE_FITS[0]
-    poster = _open_image(design.get('poster'))
-    ayto = _open_image(design.get('logo_ayto'))
-    centro = _open_image(design.get('logo_centro'))
-    im = Image.new('RGB', (W, H), 'white')
-    draw = ImageDraw.Draw(im)
-    stroke = max(1, v(2))
-    # Geometry: body width flexible, QR stub fixed in printer dots.
-    def br(x0, y0, x1, y1):
-        return (L + round(usable*x0/1000), v(y0), L + round(usable*x1/1000), v(y1))
-    def sr(x0, y0, x1, y1):
-        return (divider + v(x0), v(y0), divider + v(x1), v(y1))
-    def text_box(txt, box, size=33, *, bold=True, lines=2, min_size=11, color='black'):
-        _center(ImageDraw.Draw(im), str(txt), box, v(size), bold=bold, lines=lines,
-                min_size=max(8, v(min_size)), fill=color)
-    def bodytext(txt, box, size=33, *, lines=2, min_size=11, bold=True, color='black'):
-        text_box(txt, br(*box), size, bold=bold, lines=lines, min_size=min_size, color=color)
-    def photo(box, *, soften=0.0, frame=False):
-        x0,y0,x1,y1 = br(*box)
-        if poster is not None:
-            _fitted(im, poster, (x0,y0,x1,y1), fit, soften)
+    kind=TEMPLATES.index(chosen)
+    fit=design.get('ajuste_imagen',IMAGE_FITS[0])
+    if fit not in IMAGE_FITS: fit=IMAGE_FITS[0]
+    poster=_open_image(design.get('poster'))
+    ayto=_open_image(design.get('logo_ayto'))
+    centro=_open_image(design.get('logo_centro'))
+    im=Image.new('RGB',(W,H),'white')
+    draw=ImageDraw.Draw(im)
+    stroke=max(1,sz(2))
+    font_factor=_setting_number(design,'tamano_letra_pct',100,70,140)/100
+    header_factor=_setting_number(design,'tamano_cabecera_pct',100,70,140)/100
+    date_factor=_setting_number(design,'tamano_fecha_pct',100,70,140)/100
+    def br(x0,y0,x1,y1):
+        return (L+round(usable*x0/1000),y(y0),L+round(usable*x1/1000),y(y1))
+    def text_box(txt,rect,size=33,*,bold=True,lines=2,min_size=11,color='black',factor=None):
+        f=font_factor if factor is None else factor
+        _center(ImageDraw.Draw(im),str(txt),rect,max(8,round(size*scale*f)),
+                bold=bold,lines=lines,min_size=max(8,round(min_size*scale)),fill=color)
+    def bodytext(txt,rect,size=33,*,lines=2,min_size=11,bold=True,color='black',factor=None):
+        text_box(txt,br(*rect),size,bold=bold,lines=lines,min_size=min_size,color=color,factor=factor)
+    def photo(rect,*,soften=0.0,frame=False):
+        box=br(*rect)
+        if poster is not None: _fitted(im,poster,box,fit,soften)
         if frame and poster is not None:
-            ImageDraw.Draw(im).rectangle((x0,y0,x1-1,y1-1), outline='black', width=stroke)
-    def line(x0,y0,x1,y1):
-        ImageDraw.Draw(im).line((x0,y0,x1,y1),fill='black',width=stroke)
+            draw.rectangle((box[0],box[1],box[2]-1,box[3]-1),outline='black',width=stroke)
+    def hline(yy,xstart=0,xend=1000):
+        draw.line((br(xstart,yy,xend,yy)[0],y(yy),br(xstart,yy,xend,yy)[2],y(yy)),fill='black',width=stroke)
 
-    # Marco interior con zona segura longitudinal para el cortador.
-    draw.rectangle((L, v(7), W-right_safe, H-v(8)), outline='black', width=stroke)
-    line(divider, v(12), divider, H-v(12))
-    line(L+v(4), v(117), divider-v(4), v(117))
+    # La zona de seguridad queda blanca: no afecta a la distancia real hasta la cuchilla.
+    draw.rectangle((L,y(6),W-g['right_limit'],y(569)),outline='black',width=stroke)
+    draw.line((divider,y(9),divider,y(566)),fill='black',width=stroke)
+    hline(117)
 
-    logo_size = design.get('tamano_logos', 'Grandes')
-    logo_width = {'Pequeños': v(90), 'Medianos': v(113), 'Grandes': v(147)}.get(logo_size, v(147))
-    if ayto:
-        _fitted(im, ayto, (L+v(8),v(13),L+v(8)+logo_width,v(104)), 'Mostrar completa')
-    if centro:
-        _fitted(im, centro, (R-v(8)-logo_width,v(13),R-v(8),v(104)), 'Mostrar completa')
-    header_left = L + (logo_width+v(14) if ayto else v(13))
-    header_right = R - (logo_width+v(14) if centro else v(13))
+    # Posiciones de logos con áreas reservadas. Cada plantilla tiene una disposición inicial.
+    requested = design.get('posicion_logos','Según plantilla')
+    logo_pos = (DEFAULT_LOGO_POSITIONS[kind] if requested=='Según plantilla' else requested)
+    if logo_pos not in LOGO_POSITIONS:
+        raise ValueError('Posición de logotipos no reconocida.')
+    logo_setting=design.get('tamano_logos','Grandes')
+    logo_w={'Pequeños':90,'Medianos':113,'Grandes':145}.get(logo_setting,113)
+    # Coordenadas de encabezado en medidas relativas a su ancho, y en altura 0..117.
+    def hx(rel): return L+round(usable*rel/1000)
+    def logo_at(src,a,b,c,d):
+        if src is not None:
+            _fitted(im,src,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
+    title_box=(140,15,860,80)
+    subtitle_box=(140,79,860,110)
+    lw=min(185,max(80,round(logo_w*1000/max(usable,1)*xunit)))
+    # ancho de logo expresado como fracción de encabezado; evita solapes en 58 mm
+    lw=min(lw,165)
+    if logo_pos=='Extremos':
+        logo_at(ayto,10,12,10+lw,105)
+        logo_at(centro,990-lw,12,990,105)
+        title_box=(20+lw,14,980-lw,79)
+        subtitle_box=(20+lw,78,980-lw,110)
+    elif logo_pos=='Juntos a la izquierda':
+        logo_at(ayto,10,12,10+lw,105)
+        logo_at(centro,17+lw,12,17+lw*2,105)
+        title_box=(35+lw*2,14,987,79)
+        subtitle_box=(35+lw*2,78,987,110)
+    elif logo_pos=='Juntos a la derecha':
+        logo_at(ayto,983-lw*2,12,983-lw,105)
+        logo_at(centro,990-lw,12,990,105)
+        title_box=(13,14,962-lw*2,79)
+        subtitle_box=(13,78,962-lw*2,110)
+    elif logo_pos=='Apilados a la izquierda':
+        logo_at(ayto,12,5,12+lw,57)
+        logo_at(centro,12,60,12+lw,112)
+        title_box=(27+lw,14,985,79)
+        subtitle_box=(27+lw,78,985,110)
+    elif logo_pos=='Apilados a la derecha':
+        logo_at(ayto,988-lw,5,988,57)
+        logo_at(centro,988-lw,60,988,112)
+        title_box=(13,14,973-lw,79)
+        subtitle_box=(13,78,973-lw,110)
+    elif logo_pos=='Centrados':
+        logo_at(ayto,330,5,485,61)
+        logo_at(centro,515,5,670,61)
+        title_box=(25,62,975,93)
+        subtitle_box=(25,92,975,113)
+    # Si no se facilitan logos no se reserva artificialmente espacio para su ancho.
+    if ayto is None and centro is None:
+        title_box=(12,14,988,79)
+        subtitle_box=(12,78,988,110)
     text_box(design.get('cabecera') or 'Escuela Municipal de Música y Danza',
-             (header_left,v(14),header_right,v(79)), 33, lines=2, min_size=12)
+             br(*title_box),33,lines=2,min_size=12,factor=header_factor)
     text_box(design.get('subtitulo') or 'Arroyo de la Miel',
-             (header_left,v(78),header_right,v(108)), 22, lines=1, min_size=10)
+             br(*subtitle_box),22,lines=1,min_size=10,factor=header_factor)
 
-    date = datetime.fromisoformat(str(event['start_time']))
-    day = date.strftime('%d/%m/%Y')
-    when = date.strftime('%H:%M H')
-    label = str(event['name'])
-    place = str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
-    if kind == 0:
-        photo((5,127,383,474),frame=True)
-        off = 397 if poster else 12
-        bodytext(label,(off,143,989,250),45,lines=2,min_size=17)
-        bodytext(day,(off,248,989,317),44,lines=1,min_size=17)
-        bodytext(when,(off,324,989,399),59,lines=1,min_size=20)
-        bodytext(place,(off,405,989,475),26,lines=2,min_size=12)
-    elif kind == 1:
-        photo((5,127,520,481),frame=True)
-        off = 535 if poster else 15
-        bodytext(label,(off,135,988,264),42,lines=3,min_size=15)
-        bodytext(day,(off,280,988,343),35,lines=1,min_size=14)
-        bodytext(when,(off,344,988,417),50,lines=1,min_size=18)
-        bodytext(place,(off,416,988,483),24,lines=2,min_size=11)
-    elif kind == 2:
-        photo((5,125,995,314),frame=True)
-        bodytext(label,(11,320,991,377),42,lines=2,min_size=16)
-        bodytext(f'{day}   {when}',(11,381,991,435),39,lines=1,min_size=16)
-        bodytext(place,(11,437,991,481),24,lines=2,min_size=10)
-    elif kind == 3:
-        photo((5,124,995,483),soften=0.84)
-        bodytext(label,(35,140,970,272),50,lines=2,min_size=18)
-        bodytext(day,(25,273,977,347),47,lines=1,min_size=19)
-        bodytext(when,(25,348,977,423),58,lines=1,min_size=22)
-        pbox = br(33,437,968,483)
-        ImageDraw.Draw(im).rounded_rectangle(pbox,radius=v(7),fill='black')
-        text_box('CASA DE LA CULTURA · '+place.split('·')[-1].strip(),pbox,22,min_size=10,color='white',lines=1)
-    elif kind == 4:
-        photo((604,124,995,483),frame=True)
-        ImageDraw.Draw(im).rectangle(br(8,127,19,477),fill='black')
-        pos = 590 if poster else 984
-        bodytext(label,(35,136,pos,268),49,lines=3,min_size=17)
-        bodytext(day,(30,272,pos,346),36,lines=1,min_size=14)
-        bodytext(when,(30,343,pos,420),56,lines=1,min_size=18)
-        bodytext(place,(30,418,pos,483),25,lines=2,min_size=10)
-    else:
-        photo((5,126,258,481),frame=True)
-        photo((738,126,995,481),frame=True)
-        bodytext(label,(268,145,729,273),38,lines=3,min_size=14)
-        bodytext(day,(265,274,733,341),31,lines=1,min_size=12)
-        bodytext(when,(266,338,730,421),49,lines=1,min_size=16)
-        bodytext(place,(262,422,734,480),21,lines=2,min_size=9)
-
-    line(L+v(4),v(490),R,v(490))
-    if event['mode'] == 'libre':
+    date=datetime.fromisoformat(str(event['start_time']))
+    day=date.strftime('%d/%m/%Y')
+    when=date.strftime('%H:%M H')
+    label=str(event['name'])
+    place=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
+    def event_text(x0,x1,*,title_y=(141,258),day_y=(266,336),time_y=(340,420),place_y=(423,482),title_sz=45):
+        bodytext(label,(x0,title_y[0],x1,title_y[1]),title_sz,lines=3,min_size=14)
+        bodytext(day,(x0,day_y[0],x1,day_y[1]),37,lines=1,min_size=14,factor=date_factor)
+        bodytext(when,(x0,time_y[0],x1,time_y[1]),54,lines=1,min_size=17,factor=date_factor)
+        bodytext(place,(x0,place_y[0],x1,place_y[1]),24,lines=2,min_size=10)
+    if kind==0:  # Clásico
+        photo((5,127,384,481),frame=True)
+        event_text(397 if poster else 12,991)
+    elif kind==1:  # Cartel protagonista
+        photo((5,126,530,481),frame=True)
+        event_text(543 if poster else 12,991,title_sz=42)
+    elif kind==2:  # Panorámico
+        photo((6,125,994,315),frame=True)
+        bodytext(label,(15,320,989,375),42,lines=2,min_size=15)
+        bodytext(f'{day}   {when}',(15,378,988,434),37,lines=1,min_size=13,factor=date_factor)
+        bodytext(place,(15,434,989,482),25,lines=2,min_size=11)
+    elif kind==3:  # Fondo suave
+        photo((6,124,994,484),soften=.84)
+        bodytext(label,(30,140,970,273),50,lines=2,min_size=19)
+        bodytext(day,(28,275,975,350),44,lines=1,min_size=18,factor=date_factor)
+        bodytext(when,(28,348,975,421),58,lines=1,min_size=20,factor=date_factor)
+        bar=br(36,437,965,482)
+        draw.rectangle(bar,fill='black')
+        text_box(place,bar,23,lines=1,min_size=11,color='white')
+    elif kind==4:  # Editorial
+        photo((604,126,995,481),frame=True)
+        draw.rectangle(br(8,132,22,474),fill='black')
+        event_text(37,588 if poster else 980,title_sz=47)
+    elif kind==5:  # Mosaico
+        photo((5,126,259,480),frame=True)
+        photo((741,126,995,480),frame=True)
+        event_text(266,733,title_sz=39)
+    elif kind==6:  # Institucional: banda fotográfica inferior
+        bodytext(label,(35,138,965,247),53,lines=2,min_size=17)
+        bodytext(f'{day}   {when}',(45,250,955,308),38,lines=1,min_size=15,factor=date_factor)
+        photo((25,312,975,442),frame=True)
+        bodytext(place,(27,443,975,481),22,lines=1,min_size=12)
+    elif kind==7:  # Escenario: fotografía a toda anchura con placa blanca para legibilidad
+        photo((6,125,995,481),frame=False)
+        box=br(270,150,975,463)
+        draw.rectangle(box,fill='white',outline='black',width=stroke)
+        event_text(290,955,title_y=(162,260),day_y=(263,322),time_y=(323,386),place_y=(388,449),title_sz=39)
+    elif kind==8:  # Tríptico: tres cuadros y divisor
+        photo((8,125,336,483),frame=True)
+        draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='black',width=stroke)
+        event_text(351,982,title_y=(131,239),day_y=(249,306),time_y=(313,399),place_y=(404,474),title_sz=47)
+    else:  # 10 Minimalista: imagen estrecha, texto amplio, líneas finas
+        photo((8,129,204,477))
+        if poster:
+            draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='black',width=stroke)
+        event_text(225 if poster else 35,979,title_y=(152,257),day_y=(267,326),time_y=(337,411),place_y=(422,474),title_sz=51)
+    hline(490)
+    if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
     else:
         notes=('RESPETE SU FILA Y BUTACA ASIGNADAS',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
-    bodytext(notes[0],(10,496,990,526),17,lines=1,min_size=9)
-    bodytext(notes[1],(10,526,990,557),16,lines=1,min_size=9)
+    bodytext(notes[0],(10,495,990,524),17,lines=1,min_size=9)
+    bodytext(notes[1],(10,525,990,558),16,lines=1,min_size=9)
 
-    # Talón derecho de anchura fija: el QR jamás sufre estiramiento ni interpolación.
-    stub_left,stub_right = divider+v(8),W-right_safe-v(4)
-    _dash_line(ImageDraw.Draw(im),(stub_left,v(125),stub_right,v(201)),
-               width=stroke,dash=max(5,v(10)))
+    # Talón del QR inalterado; nunca interpolar el código.
+    stub_left, stub_right = divider+xu(8), W-g['right_limit']-xu(4)
+    _dash_line(ImageDraw.Draw(im),(stub_left,y(125),stub_right,y(201)),width=stroke,dash=max(4,xu(10)))
     text_box(f"N.º {int(ticket['number']):04d}",
-             (stub_left+v(1),v(130),stub_right-v(1),v(192)), 30,lines=1,min_size=12)
-    qr = _qr_image(ticket['qr'])
-    qw,qh = qr.size
-    if qw > stub_right-stub_left-v(2):
-        raise ValueError('El QR firmado no cabe sin reducir su resolución; usa un rollo mayor.')
-    qx=(stub_left+stub_right-qw)//2
-    qy=v(211)
-    if qy+qh > v(448):
-        raise ValueError('QR demasiado grande para este papel.')
+             (stub_left+2,y(130),stub_right-2,y(190)),30,lines=1,min_size=12)
+    qr=_qr_image(ticket['qr'])
+    if qr.width > stub_right-stub_left-xu(2):
+        raise ValueError('QR demasiado ancho. Prueba un rollo de 80 mm.')
+    qx=(stub_left+stub_right-qr.width)//2
+    qy=y(207)
+    if qy+qr.height>y(452):
+        raise ValueError('El QR no cabe con estos márgenes verticales; redúcelos.')
     im.paste(qr,(qx,qy))
-    y = qy + qh + v(4)
-    text_box('ESCANEAR QR',(stub_left,y,stub_right,y+v(27)),17,lines=1,min_size=9)
-    y += v(27)
+    caption_y=qy+qr.height+sz(6)
+    text_box('ESCANEAR QR',(stub_left,caption_y,stub_right,caption_y+sz(26)),17,lines=1,min_size=9)
+    caption_y+=sz(27)
     text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
-             (stub_left,y,stub_right,y+v(37)),16,lines=2,min_size=9)
-    y += v(38)
-    text_box('1 PERSONA',(stub_left,y,stub_right,y+v(43)),25,lines=1,min_size=13)
-    text_box('PROHIBIDA SU VENTA',
-             (stub_left,H-v(75),stub_right,H-v(18)),15,lines=1,min_size=9)
+             (stub_left,caption_y,stub_right,caption_y+sz(43)),16,lines=2,min_size=9)
+    text_box('1 PERSONA',(stub_left,y(473),stub_right,y(514)),25,lines=1,min_size=12)
+    text_box('PROHIBIDA SU VENTA',(stub_left,y(534),stub_right,y(562)),15,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 
 def render_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None, *, length_mm: int|None=None) -> Image.Image:

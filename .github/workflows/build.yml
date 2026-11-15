@@ -1,4 +1,4 @@
-name: Compilar v0.8 Windows
+name: Compilar v0.9 Windows
 on:
   push:
     branches: [main]
@@ -23,10 +23,10 @@ jobs:
           python -m pip install opencv-python-headless numpy
           python -m unittest discover -s tests -v
       - name: Compilar EXE
-        run: pyinstaller --noconfirm --clean --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.8 desktop/control_entradas.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.9 desktop/control_entradas.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_Windows_v0.8
-          path: dist/ControlEntradas_Windows_v0.8.exe
+          name: ControlEntradas_Windows_v0.9
+          path: dist/ControlEntradas_Windows_v0.9.exe
           if-no-files-found: error
           retention-days: 30

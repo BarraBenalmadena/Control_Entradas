@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -614,13 +614,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de 6 tickets · ZYWELL · v0.8')
-        win.geometry('940x755')
+        win.title('Diseñador de 10 tickets · ZYWELL · v0.9')
+        win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='TICKETS HORIZONTALES · 6 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='TICKETS HORIZONTALES · 10 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -642,7 +642,7 @@ def launch_gui():
         legacy_mode=prefs.get('modo_corte')
         # Perfiles anteriores probados sin exito: ofrecer compatibilidad ZYWELL
         # por defecto en esta nueva version (se puede elegir manualmente otro).
-        if prefs.get('version_perfil_corte')!='0.8' or legacy_mode not in ticket_printer.CUT_MODES:
+        if prefs.get('version_perfil_corte') not in ('0.8','0.9') or legacy_mode not in ticket_printer.CUT_MODES:
             legacy_mode=ticket_printer.CUT_MODES[2]
         cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
@@ -653,6 +653,14 @@ def launch_gui():
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
+            'posicion_logos':tk.StringVar(value=config.get('posicion_logos','Según plantilla')),
+            'margen_izquierdo_mm':tk.StringVar(value=str(config.get('margen_izquierdo_mm','2'))),
+            'margen_derecho_mm':tk.StringVar(value=str(config.get('margen_derecho_mm','2'))),
+            'margen_superior_mm':tk.StringVar(value=str(config.get('margen_superior_mm','1'))),
+            'margen_inferior_mm':tk.StringVar(value=str(config.get('margen_inferior_mm','1'))),
+            'tamano_letra_pct':tk.StringVar(value=str(config.get('tamano_letra_pct','100'))),
+            'tamano_cabecera_pct':tk.StringVar(value=str(config.get('tamano_cabecera_pct','100'))),
+            'tamano_fecha_pct':tk.StringVar(value=str(config.get('tamano_fecha_pct','100'))),
             'desplazamiento_mm':tk.StringVar(value=str(config.get('desplazamiento_mm','0'))),
             'cabecera':tk.StringVar(value=config.get('cabecera','Escuela Municipal de Música y Danza')),
             'subtitulo':tk.StringVar(value=config.get('subtitulo','Arroyo de la Miel')),
@@ -709,41 +717,74 @@ def launch_gui():
                                   'El largo determina el papel REAL; ya no deforma los elementos del diseño.',
                   wraplength=780,justify='left').pack(anchor='w',pady=8)
 
-        art=ttk.LabelFrame(page_design,text='Plantilla horizontal e imágenes',padding=10)
+        # El diseñador crece de diez a dieciocho opciones: área desplazable real.
+        designer_canvas=tk.Canvas(page_design,highlightthickness=0)
+        designer_scroll=ttk.Scrollbar(page_design,orient='vertical',command=designer_canvas.yview)
+        designer_canvas.configure(yscrollcommand=designer_scroll.set)
+        designer_canvas.pack(side='left',fill='both',expand=True)
+        designer_scroll.pack(side='right',fill='y')
+        designer_body=ttk.Frame(designer_canvas,padding=4)
+        designer_window=designer_canvas.create_window((0,0),window=designer_body,anchor='nw')
+        designer_body.bind('<Configure>',lambda *_:designer_canvas.configure(scrollregion=designer_canvas.bbox('all')))
+        designer_canvas.bind('<Configure>',lambda e:designer_canvas.itemconfigure(designer_window,width=e.width))
+        art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (6 modelos)',
-            'ajuste_imagen':'Ajuste de fotografía',
+            'plantilla':'Diseño (10 modelos)',
+            'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
-            'desplazamiento_mm':'Ajustar diseño al corte (mm)',
+            'ajuste_imagen':'Ajuste del cartel / fotografía',
+            'margen_izquierdo_mm':'Margen izquierdo / inicio (mm)',
+            'margen_derecho_mm':'Margen derecho / corte (mm)',
+            'margen_superior_mm':'Margen superior (mm)',
+            'margen_inferior_mm':'Margen inferior (mm)',
+            'desplazamiento_mm':'Desplazamiento horizontal (mm)',
+            'tamano_letra_pct':'Tamaño general de letras (%)',
+            'tamano_cabecera_pct':'Tamaño de cabecera (%)',
+            'tamano_fecha_pct':'Tamaño de fecha y hora (%)',
             'cabecera':'Cabecera',
             'subtitulo':'Subtítulo',
             'lugar':'Lugar',
             'poster':'Cartel del espectáculo (JPG/PNG)',
-            'logo_ayto':'Logotipo Ayuntamiento',
-            'logo_centro':'Logotipo escuela/centro',
+            'logo_ayto':'Logo del Ayuntamiento',
+            'logo_centro':'Logo de la escuela/centro',
         }
-        for r,key in enumerate(labels):
-            ttk.Label(art,text=labels[key]).grid(row=r,column=0,sticky='w',pady=5)
-            if key in ('plantilla','ajuste_imagen','tamano_logos','desplazamiento_mm'):
-                choices={'plantilla':ticket_printer.TEMPLATES,
-                         'ajuste_imagen':ticket_printer.IMAGE_FITS,
-                         'tamano_logos':ticket_printer.LOGO_SIZES,
-                         'desplazamiento_mm':('-3','-2','-1','0','1','2','3')}[key]
-                ttk.Combobox(art,textvariable=variables[key],values=choices,state='readonly',width=37).grid(row=r,column=1,sticky='w',padx=7)
+        margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
+        percent_choices=('70','80','90','100','110','120','130','140')
+        combos={
+            'plantilla':ticket_printer.TEMPLATES,
+            'posicion_logos':ticket_printer.LOGO_POSITIONS,
+            'ajuste_imagen':ticket_printer.IMAGE_FITS,
+            'tamano_logos':ticket_printer.LOGO_SIZES,
+            'margen_izquierdo_mm':margin_choices,
+            'margen_derecho_mm':margin_choices,
+            'margen_superior_mm':margin_choices,
+            'margen_inferior_mm':margin_choices,
+            'desplazamiento_mm':('-3','-2','-1','0','1','2','3'),
+            'tamano_letra_pct':percent_choices,
+            'tamano_cabecera_pct':percent_choices,
+            'tamano_fecha_pct':percent_choices,
+        }
+        for row,key in enumerate(labels):
+            ttk.Label(art,text=labels[key]).grid(row=row,column=0,sticky='w',pady=4)
+            if key in combos:
+                ttk.Combobox(art,textvariable=variables[key],values=combos[key],
+                             state=('normal' if key.startswith('margen_') else 'readonly'),width=36).grid(row=row,column=1,sticky='w',padx=7)
             else:
-                ttk.Entry(art,textvariable=variables[key],width=56).grid(row=r,column=1,sticky='ew',padx=7)
+                ttk.Entry(art,textvariable=variables[key],width=56).grid(row=row,column=1,sticky='ew',padx=7)
             if key in ('poster','logo_ayto','logo_centro'):
                 def pick_image(k=key):
-                    selected=filedialog.askopenfilename(parent=win,title=labels[k],filetypes=[('Imágenes','*.jpg *.jpeg *.png *.bmp *.webp')])
-                    if selected:
-                        variables[k].set(selected)
-                ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=r,column=2,padx=5)
+                    selected=filedialog.askopenfilename(parent=win,title=labels[k],
+                        filetypes=[('Imágenes','*.jpg *.jpeg *.png *.bmp *.webp')])
+                    if selected: variables[k].set(selected)
+                ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=row,column=2,padx=5)
         art.columnconfigure(1,weight=1)
-        ttk.Label(page_design,text='«Rellenar y recortar» ocupa por completo la zona del cartel; «Mostrar completa» evita recortes, pero puede dejar bandas.\n'
-                                    '«04 · Fondo suave» coloca el cartel aclarado detrás del texto. Los 6 modelos mantienen el QR verificable.\n'
-                                    'El ajuste de -3 a +3 mm desplaza el diseño sin variar el largo de papel ni deformar el QR.',
-                  wraplength=850,justify='left').pack(anchor='w',pady=10)
+        ttk.Label(designer_body,text='Izquierda y derecha son los extremos LARGOS del ticket horizontal (antes y después del corte). '
+                                    'El máximo permitido es 18 mm por lado. Superior e inferior ajustan el ancho imprimible. '
+                                    '«Según plantilla» sitúa los logotipos de manera distinta en cada diseño. '
+                                    '«Fondo suave» mantiene la imagen suavizada detrás del texto. '
+                                    'El margen del ticket y la distancia física de la cuchilla son ajustes diferentes.',
+                  wraplength=890,justify='left').pack(anchor='w',pady=10)
 
         note=tk.StringVar(value='Elige una plantilla y comprueba la vista previa. Se respetan los datos y las entradas existentes.')
         ttk.Label(outer,textvariable=note,wraplength=880,foreground='#1d5376').pack(anchor='w',pady=(7,5))
@@ -780,6 +821,12 @@ def launch_gui():
             d['poster_mode']='fondo' if d['plantilla']==ticket_printer.TEMPLATES[3] else 'lateral'
             if not -3 <= float(d.get('desplazamiento_mm') or '0') <= 3:
                 raise ValueError('Desplazamiento permitido: -3 a +3 mm.')
+            # Validar todos los ajustes antes de guardar, no al imprimir.
+            ticket_printer.geometry(int(roll.get()),ticket_length(),d)
+            for field in ('tamano_letra_pct','tamano_cabecera_pct','tamano_fecha_pct'):
+                ticket_printer._setting_number(d,field,100,70,140)
+            if d['posicion_logos'] not in ticket_printer.LOGO_POSITIONS:
+                raise ValueError('Posición de logos no reconocida.')
             if save:
                 directory=DATA_DIR/'imagenes'/event_id
                 directory.mkdir(parents=True,exist_ok=True)
@@ -799,7 +846,7 @@ def launch_gui():
                 prefs_path.write_text(json.dumps({'ancho':int(roll.get()),'impresora':printer.get(),
                     'corte_v04':cut.get(),'tipo_corte':cut_type.get(),'avance_corte':feed_amount(),
                     'largo_ticket':ticket_length(),'modo_corte':cut_mode.get(),
-                    'version_perfil_corte':'0.8'},ensure_ascii=False),encoding='utf-8')
+                    'version_perfil_corte':'0.9'},ensure_ascii=False),encoding='utf-8')
             return d
         def save_design():
             try:
@@ -835,7 +882,7 @@ def launch_gui():
                 d=current_design(save=True)
                 ev,tkdata=get_ticket(event_id,numbers[0])
                 gallery_win=tk.Toplevel(win)
-                gallery_win.title('Elegir entre 6 modelos de ticket')
+                gallery_win.title('Elegir entre 10 modelos de ticket')
                 gallery_win.geometry('1090x700')
                 gallery_win.minsize(850,530)
                 shell=ttk.Frame(gallery_win,padding=7);shell.pack(fill='both',expand=True)
@@ -959,7 +1006,7 @@ def launch_gui():
             threading.Thread(target=worker,daemon=True).start()
 
         ttk.Button(actions,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
-        ttk.Button(actions,text='VER 6 DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
+        ttk.Button(actions,text='VER 10 DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
         ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
