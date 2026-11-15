@@ -87,3 +87,54 @@ class ControlEntradasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SixDesignsAndBatchTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.init_db()
+
+    def test_six_horizontal_templates_scannable_at_58_and_80(self):
+        import cv2
+        import numpy as np
+        from PIL import Image, ImageDraw
+        image_path = Path(TEMP.name)/'cartel.jpg'
+        poster=Image.new('RGB',(230,640),'white')
+        draw=ImageDraw.Draw(poster)
+        draw.rectangle((0,0,228,638),fill='#555555')
+        draw.ellipse((25,140,205,320),fill='#dddddd')
+        poster.save(image_path)
+        e=app.create_event('Festival municipal de danza', '2027-07-01T20:30','libre',2)
+        event,ticket=app.get_ticket(e,1)
+        for width in (58,80):
+            for template in ticket_printer.TEMPLATES:
+                with self.subTest(width=width,template=template):
+                    design={'plantilla':template,'poster':str(image_path),'ajuste_imagen':'Rellenar y recortar','tamano_logos':'Grandes'}
+                    im=ticket_printer.render_landscape_ticket(event,ticket,width,design)
+                    self.assertEqual(im.height,ticket_printer.PRINTABLE_DOTS[width])
+                    self.assertGreater(im.width,im.height)
+                    gray=cv2.cvtColor(np.asarray(im),cv2.COLOR_RGB2GRAY)
+                    if width==58:
+                        gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_NEAREST)
+                    decoded,_,_=cv2.QRCodeDetector().detectAndDecode(gray)
+                    self.assertEqual(decoded,ticket['qr'])
+
+    def test_multi_print_one_job_three_separate_cuts(self):
+        from unittest.mock import patch
+        e=app.create_event('Concierto', '2027-11-20T19:00', 'libre', 3)
+        pairs=[app.get_ticket(e,n) for n in (1,2,3)]
+        with patch.object(ticket_printer,'send_raw',return_value=101) as send:
+            job=ticket_printer.print_windows_escpos_batch(pairs,'ZYWELL test',80,
+                        {'plantilla':ticket_printer.TEMPLATES[1]},True,feed_dots=48)
+            self.assertEqual(job,101)
+            self.assertEqual(send.call_count,1)
+            raw=send.call_args.args[1]
+            self.assertEqual(raw.count(b'\x1d\x56\x00'),3)
+            self.assertEqual(raw.count(b'\x1b\x4a\x30\x1d\x56\x00'),3)
+            self.assertEqual(raw.count(b'\x1b\x40'),3)
+
+    def test_original_soft_background_preserved(self):
+        e=app.create_event('Concierto', '2027-11-20T19:00', 'libre', 1)
+        event,ticket=app.get_ticket(e,1)
+        legacy=ticket_printer.render_landscape_ticket(event,ticket,80,{'poster_mode':'fondo'})
+        explicit=ticket_printer.render_landscape_ticket(event,ticket,80,{'plantilla':ticket_printer.TEMPLATES[3]})
+        self.assertEqual(legacy.tobytes(),explicit.tobytes())
