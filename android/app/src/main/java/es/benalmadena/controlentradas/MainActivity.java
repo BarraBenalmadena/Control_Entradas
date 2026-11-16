@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
     private androidx.camera.core.Camera activeCamera;
-    private float zoomRatio = 1.35f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
+    private float zoomRatio = 1.0f; // Campo de visión completo: detecta códigos en todo el encuadre
     private TextView zoomLabel;
     private long lastScannerErrorMs = 0L;
 
@@ -307,12 +307,12 @@ public class MainActivity extends AppCompatActivity {
         });
         cameraView = new PreviewView(this);
         cameraView.setVisibility(View.GONE);
-        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(325)));
+        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(420)));
         LinearLayout zoomRow = new LinearLayout(this);
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         Button lessZoom = button("– ZOOM");
         Button moreZoom = button("+ ZOOM");
-        zoomLabel = text("ZOOM 1.35×", 13, true);
+        zoomLabel = text("ZOOM 1.0×", 13, true);
         zoomLabel.setGravity(Gravity.CENTER);
         zoomRow.addView(lessZoom,new LinearLayout.LayoutParams(0,dp(46),1));
         zoomRow.addView(zoomLabel,new LinearLayout.LayoutParams(0,dp(46),1));
@@ -685,7 +685,7 @@ public class MainActivity extends AppCompatActivity {
                 cameraProvider.unbindAll();
                 activeCamera=cameraProvider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis);
                 applyCameraZoom();
-                showResult("CÁMARA ACTIVA · ACERCA EL QR Y MANTÉNLO ENFOCADO",Color.rgb(130,82,0));
+                showResult("CÁMARA ACTIVA · DETECCIÓN EN TODO EL ENCUADRE",Color.rgb(130,82,0));
             }catch(Exception e){scannerStarted=false;showResult("ERROR DE CÁMARA: "+e.getMessage(),Color.RED);}
         },ContextCompat.getMainExecutor(this));
     }
