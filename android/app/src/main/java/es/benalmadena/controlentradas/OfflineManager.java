@@ -96,6 +96,10 @@ public final class OfflineManager {
     }
     public synchronized String importedKey(){ return publicKey; }
     public synchronized boolean hasPackage(){ return data!=null; }
+    public synchronized File storedPackage() throws Exception {
+        if(data==null || !stored.isFile())throw new Exception("No hay JSON firmado para compartir");
+        return stored;
+    }
     public synchronized String eventId(){ return data==null?"":data.optJSONObject("event").optString("id"); }
     public synchronized JSONObject event(){ return data==null?null:data.optJSONObject("event"); }
     public synchronized int ticketCount(){ return tickets.size(); }
