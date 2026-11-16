@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
     private androidx.camera.core.Camera activeCamera;
-    private float zoomRatio = 1.0f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
+    private float zoomRatio = 1.35f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
     private TextView zoomLabel;
     private long lastScannerErrorMs = 0L;
 
@@ -312,7 +312,7 @@ public class MainActivity extends AppCompatActivity {
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         Button lessZoom = button("– ZOOM");
         Button moreZoom = button("+ ZOOM");
-        zoomLabel = text("ZOOM 1.0×", 13, true);
+        zoomLabel = text("ZOOM 1.35×", 13, true);
         zoomLabel.setGravity(Gravity.CENTER);
         zoomRow.addView(lessZoom,new LinearLayout.LayoutParams(0,dp(46),1));
         zoomRow.addView(zoomLabel,new LinearLayout.LayoutParams(0,dp(46),1));
@@ -636,7 +636,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1280,720))
+                    .setTargetResolution(new Size(1920,1080))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -653,7 +653,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
-                                if(now-lastQrVisibleMs>380)blockedQr="";
+                                if(now-lastQrVisibleMs>250)blockedQr="";
                                 return;
                             }
                             boolean same=candidate.equals(blockedQr);
@@ -685,7 +685,7 @@ public class MainActivity extends AppCompatActivity {
                 cameraProvider.unbindAll();
                 activeCamera=cameraProvider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis);
                 applyCameraZoom();
-                showResult("CÁMARA ACTIVA · ENFOCA EL QR EN EL CENTRO",Color.rgb(20,122,71));
+                showResult("CÁMARA ACTIVA · ACERCA EL QR Y MANTÉNLO ENFOCADO",Color.rgb(130,82,0));
             }catch(Exception e){scannerStarted=false;showResult("ERROR DE CÁMARA: "+e.getMessage(),Color.RED);}
         },ContextCompat.getMainExecutor(this));
     }
@@ -724,14 +724,17 @@ public class MainActivity extends AppCompatActivity {
                 }else if(mode==3){
                     response=coordinatorRequest(qr,event,host,secret);
                 }else throw new Exception("Modo de validación desconocido");
-                String status=response.optString("status"),message=response.optString("message",status);
+                String status=response.optString("status","invalid");
+                String message=response.isNull("message")?"":response.optString("message","");
+                if(message==null || message.trim().isEmpty() || "null".equalsIgnoreCase(message.trim()))
+                    message="valid".equals(status)?"ENTRADA VÁLIDA":"Entrada rechazada. Comprueba la función y el JSON importado.";
                 if("valid".equals(status))message+="\nN.º "+response.optInt("number")+
                     (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
                 String finished=message;
                 boolean accepted="valid".equals(status);
                 runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();});
             }catch(Exception ex){
-                runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);say("Acceso no validado. Compruebe la conexión o el código.");});
+                runOnUiThread(()->{String detail=ex.getMessage()==null?"Error de validación":ex.getMessage();showResult("NO AUTORIZADO\n"+detail,Color.RED);scanFeedback(false);say("Entrada no autorizada.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
         });
     }
