@@ -78,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private final AtomicBoolean analyzing = new AtomicBoolean(false); // validación de acceso en curso
     private final AtomicBoolean frameBusy = new AtomicBoolean(false); // una imagen ML Kit a la vez
     private final ExecutorService cameraExecutor = Executors.newSingleThreadExecutor();
-    private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
+    private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_ALARM, 95);
     private TextToSpeech voice;
     private boolean voiceReady = false;
     private boolean continuousEnabled = true;
@@ -108,6 +108,8 @@ public class MainActivity extends AppCompatActivity {
     private Spinner validationMode;
     private EditText rangeFrom, rangeTo, coordinatorIp, coordinatorPin;
     private TextView offlineStatus;
+    private Button ticketListButton;
+    private int validatedSession = 0;
     private Button coordinatorButton;
 
     @Override public void onCreate(Bundle state) {
@@ -175,6 +177,7 @@ public class MainActivity extends AppCompatActivity {
                 setEvents(new JSONArray().put(offline.event()));
                 validationMode.setSelection(prefs.getInt("scan_mode",1));
                 offlineStatus.setText("JSON firmado cargado · "+offline.ticketCount()+" entradas · sin IP de Windows");
+                updateOfflineCounter();
             }else setEvents(new JSONArray(prefs.getString("events", "[]")));
         }catch (Exception ignored) { }
         if(offline.hasPackage()) cameraView.post(()->ensureContinuousScanner());
@@ -249,6 +252,9 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(exportAccess);
         exportAccess.setOnClickListener(v->auditExporter.launch("Accesos_"+offline.eventId()+".json"));
         offlineStatus=text("No hay JSON offline importado",12,true);layout.addView(offlineStatus);
+        ticketListButton=button("VER ENTRADAS DEL JSON Y ESTADO DE ACCESO");
+        ticketListButton.setOnClickListener(v->showTicketList());
+        layout.addView(ticketListButton);
         layout.addView(text("Sin red: asigna rangos de números DISTINTOS a cada móvil",11,false));
         LinearLayout ranges=new LinearLayout(this);ranges.setOrientation(LinearLayout.HORIZONTAL);
         rangeFrom=new EditText(this);rangeFrom.setHint("Desde, ej. 1");rangeFrom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -338,7 +344,7 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
         fastPanel.setBackgroundColor(Color.WHITE);
         View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
-                offlineStatus,cameraView,zoomRow,camera,statusView,counterView,queueView};
+                offlineStatus,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,queueView};
         for(View view:quick) layout.removeView(view);
         LinearLayout settingsPanel=new LinearLayout(this);
         settingsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -362,6 +368,43 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.addView(shareButton,5);
         shareButton.setOnClickListener(v->shareSignedEvent());
         refreshPending();
+    }
+
+    private void showTicketList(){
+        if(!offline.hasPackage()){
+            new AlertDialog.Builder(this).setTitle("Entradas")
+                .setMessage("Importa el JSON firmado de Windows para consultar las entradas.")
+                .setPositiveButton("Aceptar",null).show();
+            return;
+        }
+        JSONArray arr=offline.ticketList();
+        int used=0;
+        StringBuilder info=new StringBuilder();
+        for(int i=0;i<arr.length();i++){
+            JSONObject t=arr.optJSONObject(i);
+            if(t==null)continue;
+            boolean scanned=t.optBoolean("used");
+            if(scanned)used++;
+            info.append(String.format(java.util.Locale.US,"%04d",t.optInt("number")));
+            if(!t.optString("seat").isEmpty())info.append(" · ").append(t.optString("seat"));
+            info.append(scanned?" · UTILIZADA":" · PENDIENTE").append("\\n");
+        }
+        final int completed=used;
+        new AlertDialog.Builder(this)
+            .setTitle("Entradas del JSON: "+arr.length()+" · Usadas: "+completed)
+            .setMessage(info.length()>0?info.toString():"El archivo no contiene entradas.")
+            .setPositiveButton("Cerrar",null).show();
+    }
+    private void updateOfflineCounter() {
+        if(!offline.hasPackage())return;
+        JSONArray items=offline.ticketList();
+        int used=0;
+        for(int i=0;i<items.length();i++){
+            JSONObject t=items.optJSONObject(i);
+            if(t!=null && t.optBoolean("used"))used++;
+        }
+        counterView.setText("JSON importado: "+items.length()+" entradas  ·  Validadas: "+used+
+                "  ·  Pendientes: "+(items.length()-used));
     }
 
     private void shareSignedEvent(){
@@ -398,7 +441,7 @@ public class MainActivity extends AppCompatActivity {
         if(voiceReady && voice != null) voice.speak(message, TextToSpeech.QUEUE_FLUSH, null, "qr_result");
     }
     private void detectedBeep() {
-        try { feedbackTone.startTone(ToneGenerator.TONE_PROP_BEEP, 130); } catch(Exception ignored) {}
+        try { feedbackTone.startTone(ToneGenerator.TONE_PROP_BEEP, 220); } catch(Exception ignored) {}
     }
     private void scanFeedback(boolean accepted){
         try{feedbackTone.startTone(accepted?ToneGenerator.TONE_PROP_ACK:ToneGenerator.TONE_PROP_NACK,accepted?100:240);}catch(Exception ignored){}
@@ -421,6 +464,7 @@ public class MainActivity extends AppCompatActivity {
                     setEvents(new JSONArray().put(event));
                     validationMode.setSelection(1);
                     offlineStatus.setText("Archivo verificado: "+event.optString("name")+" · "+offline.ticketCount()+" entradas");
+                    updateOfflineCounter();
                     showResult("JSON CARGADO · CÁMARA PREPARADA",Color.rgb(20,122,71));
                     ensureContinuousScanner();
                 });
@@ -495,6 +539,7 @@ public class MainActivity extends AppCompatActivity {
         int index = eventSpinner.getSelectedItemPosition();
         if(index<0 || index>=events.length()) { counterView.setText(""); return; }
         JSONObject ev = events.optJSONObject(index);
+        if(offline.hasPackage()){updateOfflineCounter();return;}
         if(ev != null) counterView.setText("Accesos confirmados al conectar: " + ev.optInt("used") + " / " + ev.optInt("issued"));
     }
     private void showResult(String message, int color) {
@@ -575,7 +620,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1280,720))
+                    .setTargetResolution(new Size(1920,1080))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -592,12 +637,13 @@ public class MainActivity extends AppCompatActivity {
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
-                                if(now-lastQrVisibleMs>700)blockedQr="";
+                                if(now-lastQrVisibleMs>550)blockedQr="";
                                 return;
                             }
                             boolean same=candidate.equals(blockedQr);
                             lastQrVisibleMs=now;
                             if(same || analyzing.get())return;
+                            showResult("QR DETECTADO · VALIDANDO ENTRADA...",Color.rgb(130,82,0));
                             detectedBeep();
                             if(!candidate.startsWith("CE1.")){
                                 blockedQr=candidate;
@@ -667,7 +713,7 @@ public class MainActivity extends AppCompatActivity {
                     (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
                 String finished=message;
                 boolean accepted="valid".equals(status);
-                runOnUiThread(()->{showResult((accepted?"ACCESO PERMITIDO\n":"ACCESO DENEGADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada válida. Acceso permitido.":"Acceso denegado. "+messageForVoice(finished));});
+                runOnUiThread(()->{showResult((accepted?"ACCESO PERMITIDO\n":"ACCESO DENEGADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada válida. Acceso permitido.":"Acceso denegado. "+messageForVoice(finished));updateOfflineCounter();});
             }catch(Exception ex){
                 runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);say("Acceso no validado. Compruebe la conexión o el código.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
