@@ -178,7 +178,8 @@ def export_offline_event(event_id: str, target: Path):
     with connect() as db:
         event=db.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if event is None:raise ValueError('La función no existe.')
-        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? ORDER BY t.number",(event_id,)).fetchall()
+        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? AND p.submitted_at IS NOT NULL ORDER BY t.number",(event_id,)).fetchall()
+    if not tickets: raise ValueError('No hay entradas enviadas a impresión. Imprime primero y luego exporta este JSON.')
     data={'version':1,'created_at':iso_now(),'event':dict(event),
           'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
                       'used':bool(t['used_at']),'reserved':bool(t['reserved']),
@@ -1091,8 +1092,8 @@ def launch_gui():
                     def success():
                         if not win.winfo_exists():return
                         print_button.configure(state='normal')
-                        note.set(f'{len(numbers)} entradas enviadas a Windows. Trabajo de impresión: {job}.')
-                        messagebox.showinfo('Lote enviado',f'Windows ha aceptado el trabajo {job} con {len(numbers)} entradas. Comprueba físicamente los cortes.',parent=win)
+                        note.set(f'{len(numbers)} entradas enviadas. Exporta ahora el JSON firmado actualizado para la APK.')
+                        messagebox.showinfo('Lote enviado',f'Windows ha aceptado el trabajo {job} con {len(numbers)} entradas. Comprueba físicamente los cortes. Después exporta el JSON firmado desde la pantalla principal para que la APK acepte estas entradas.',parent=win)
                     win.after(0,success)
                 except Exception as ex:
                     info=str(ex)
@@ -1133,12 +1134,12 @@ def launch_gui():
         ev=next((e for e in list_events() if e['id']==eid),None)
         if not ev:return
         path=filedialog.asksaveasfilename(title='Exportar función firmada para Android',
-                   initialfile='Evento_'+eid[:8]+'_firmado.json',defaultextension='.json',filetypes=[('Archivo JSON','*.json')])
+                   initialfile='Entradas_Impresas.json',defaultextension='.json',filetypes=[('Archivo JSON','*.json')])
         if not path:return
         try:
             total=export_offline_event(eid,Path(path))
             messagebox.showinfo('Archivo firmado exportado',
-                f'Exportación terminada: {total} entradas.\n\nArchivo: {path}\n\n'
+                f'Exportación terminada: {total} entradas enviadas a impresión.\n\nArchivo: {path}\n\n'
                 'Importa este JSON en cada móvil mediante la APK.\n'
                 'Si escaneas en varios móviles SIN conexión entre ellos, asigna rangos distintos: '
                 'no pueden detectar duplicados entre dispositivos aislados.\n\n'
