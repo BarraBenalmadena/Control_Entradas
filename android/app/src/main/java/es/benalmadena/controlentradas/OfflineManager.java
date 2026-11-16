@@ -117,6 +117,8 @@ public final class OfflineManager {
                 item.put("used",t.optBoolean("used") ||
                         prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false));
                 item.put("reserved",t.optBoolean("reserved"));
+                item.put("printed",t.optBoolean("submitted_to_printer"));
+                item.put("print_known",t.has("submitted_to_printer"));
                 rows.put(item);
             }catch(Exception ignored){}
         }
