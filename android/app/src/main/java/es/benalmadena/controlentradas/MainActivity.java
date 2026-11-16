@@ -8,6 +8,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
+import android.speech.tts.TextToSpeech;
+import java.util.Locale;
 import android.os.Vibrator;
 import android.os.VibrationEffect;
 import android.os.Build;
@@ -76,7 +78,9 @@ public class MainActivity extends AppCompatActivity {
     private final AtomicBoolean analyzing = new AtomicBoolean(false); // validación de acceso en curso
     private final AtomicBoolean frameBusy = new AtomicBoolean(false); // una imagen ML Kit a la vez
     private final ExecutorService cameraExecutor = Executors.newSingleThreadExecutor();
-    private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 85);
+    private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
+    private TextToSpeech voice;
+    private boolean voiceReady = false;
     private boolean continuousEnabled = true;
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
@@ -109,6 +113,13 @@ public class MainActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        voice = new TextToSpeech(this, status -> {
+            if(status == TextToSpeech.SUCCESS && voice != null){
+                int result = voice.setLanguage(new Locale("es", "ES"));
+                voiceReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED;
+                voice.setSpeechRate(1.0f);
+            }
+        });
         publicKey = prefs.getString("pubkey", "");
         offline = new OfflineManager(this);
         deviceId = prefs.getString("device", "");
@@ -379,6 +390,16 @@ public class MainActivity extends AppCompatActivity {
         }else permissionLauncher.launch(Manifest.permission.CAMERA);
     }
 
+    private String messageForVoice(String value) {
+        String text = value == null ? "" : value.replace('\n', ' ');
+        return text.length() > 110 ? text.substring(0,110) : text;
+    }
+    private void say(String message) {
+        if(voiceReady && voice != null) voice.speak(message, TextToSpeech.QUEUE_FLUSH, null, "qr_result");
+    }
+    private void detectedBeep() {
+        try { feedbackTone.startTone(ToneGenerator.TONE_PROP_BEEP, 130); } catch(Exception ignored) {}
+    }
     private void scanFeedback(boolean accepted){
         try{feedbackTone.startTone(accepted?ToneGenerator.TONE_PROP_ACK:ToneGenerator.TONE_PROP_NACK,accepted?100:240);}catch(Exception ignored){}
         try{
@@ -577,10 +598,12 @@ public class MainActivity extends AppCompatActivity {
                             boolean same=candidate.equals(blockedQr);
                             lastQrVisibleMs=now;
                             if(same || analyzing.get())return;
+                            detectedBeep();
                             if(!candidate.startsWith("CE1.")){
                                 blockedQr=candidate;
-                                showResult("QR DETECTADO, PERO NO ES UNA ENTRADA CE1 DE ESTE SISTEMA",Color.RED);
+                                showResult("QR DETECTADO · FORMATO NO VÁLIDO PARA ESTE SISTEMA",Color.RED);
                                 scanFeedback(false);
+                                say("Código QR no válido para este espectáculo.");
                                 return;
                             }
                             if(analyzing.compareAndSet(false,true)){
@@ -644,9 +667,9 @@ public class MainActivity extends AppCompatActivity {
                     (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
                 String finished=message;
                 boolean accepted="valid".equals(status);
-                runOnUiThread(()->{showResult(finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);});
+                runOnUiThread(()->{showResult((accepted?"ACCESO PERMITIDO\n":"ACCESO DENEGADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada válida. Acceso permitido.":"Acceso denegado. "+messageForVoice(finished));});
             }catch(Exception ex){
-                runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);});
+                runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);say("Acceso no validado. Compruebe la conexión o el código.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
         });
     }
@@ -674,9 +697,9 @@ public class MainActivity extends AppCompatActivity {
             JSONArray pending = new JSONArray(prefs.getString("pending","[]"));
             pending.put(new JSONObject().put("qr",qr).put("event_id",event).put("device_id",deviceId));
             prefs.edit().putString("pending",pending.toString()).putBoolean(usedKey,true).commit();
-            runOnUiThread(() -> { showResult("ACCESO PROVISIONAL SIN RED\nN.º "+ticket.optInt("n") + (ticket.isNull("s") ? "" : "\n" + ticket.optString("s")) + "\nSOLO ESTE MÓVIL",Color.rgb(130,82,0));scanFeedback(true);refreshPending(); });
+            runOnUiThread(() -> { showResult("ACCESO PROVISIONAL SIN RED\nN.º "+ticket.optInt("n") + (ticket.isNull("s") ? "" : "\n" + ticket.optString("s")) + "\nSOLO ESTE MÓVIL",Color.rgb(130,82,0));scanFeedback(true);say("Acceso provisional sin red.");refreshPending(); });
         } catch(Exception ex) {
-            runOnUiThread(() -> {showResult("ENTRADA RECHAZADA\n"+ex.getMessage(),Color.RED);scanFeedback(false);});
+            runOnUiThread(() -> {showResult("ENTRADA RECHAZADA\n"+ex.getMessage(),Color.RED);scanFeedback(false);say("Entrada rechazada.");});
         }
     }
     private void refreshPending() {
@@ -713,6 +736,7 @@ public class MainActivity extends AppCompatActivity {
         if(cameraProvider!=null) cameraProvider.unbindAll();
         scanner.close();
         feedbackTone.release();
+        if(voice != null){voice.stop();voice.shutdown();}
         if(offline!=null)offline.stopHost();
         cameraExecutor.shutdownNow();
         executor.shutdownNow();
