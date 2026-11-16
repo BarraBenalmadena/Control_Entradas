@@ -241,6 +241,7 @@ def delete_event(event_id: str) -> dict:
             used = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=? AND used_at IS NOT NULL', (event_id,)).fetchone()[0]
             issued = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=?', (event_id,)).fetchone()[0]
             conn.execute('DELETE FROM ticket_design WHERE event_id=?', (event_id,))
+            conn.execute('DELETE FROM ticket_print_log WHERE ticket_id IN (SELECT id FROM tickets WHERE event_id=?)', (event_id,))
             conn.execute('DELETE FROM tickets WHERE event_id=?', (event_id,))
             conn.execute('DELETE FROM events WHERE id=?', (event_id,))
             conn.commit()
