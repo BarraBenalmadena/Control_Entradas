@@ -103,6 +103,25 @@ public final class OfflineManager {
     public synchronized String eventId(){ return data==null?"":data.optJSONObject("event").optString("id"); }
     public synchronized JSONObject event(){ return data==null?null:data.optJSONObject("event"); }
     public synchronized int ticketCount(){ return tickets.size(); }
+    public synchronized JSONArray ticketList() {
+        JSONArray rows = new JSONArray();
+        if(data==null)return rows;
+        java.util.ArrayList<JSONObject> ordered=new java.util.ArrayList<>(tickets.values());
+        ordered.sort((a,b)->Integer.compare(a.optInt("number"),b.optInt("number")));
+        String eid=eventId();
+        for(JSONObject t:ordered){
+            JSONObject item=new JSONObject();
+            try{
+                item.put("number",t.optInt("number"));
+                item.put("seat",t.optString("seat",""));
+                item.put("used",t.optBoolean("used") ||
+                        prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false));
+                item.put("reserved",t.optBoolean("reserved"));
+                rows.put(item);
+            }catch(Exception ignored){}
+        }
+        return rows;
+    }
     public synchronized boolean hosting(){return server!=null&&!server.isClosed();}
     private synchronized JSONObject verifyQr(String qr,String event) throws Exception {
         if(data==null)throw new Exception("Importa primero un JSON firmado");
