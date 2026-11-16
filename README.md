@@ -61,3 +61,11 @@ Los márgenes del diseño **no calibran la cuchilla**. El corte físico sigue de
 - Los fallos internos de ML Kit se muestran en pantalla cuando suceden.
 - QR imprimibles más legibles (módulos más grandes, sin interpolación).
 - Conserva los QR CE1 y el JSON firmado de versiones anteriores; si el impreso original es muy pequeño, puede requerir reimpresión para mejorar la lectura.
+
+## v1.4 · Lector QR, firma de pruebas y nuevas plantillas
+
+- 8 modelos nuevos, 23–30, mantienen el tamaño horizontal 135 × 80 mm y admiten JPG/PNG como cartel de fondo o imagen principal.
+- Android: listado de entradas importadas del JSON firmado, contador de entradas usadas y pendientes y aviso acústico y de voz después de validar.
+- Las entradas enviadas a la cola de impresión se registran a partir de esta versión y su estado se incluye en las exportaciones JSON posteriores; no certifica la salida física del papel ni reconstruye impresiones anteriores.
+- La firma de la APK de **pruebas** se conserva en el caché privado del flujo de GitHub. Una instalación firmada con una clave anterior distinta no puede actualizarse sobre sí misma; requiere una reinstalación inicial. Si caduca o se pierde el caché, será necesario configurar una firma de publicación permanente mediante un secreto privado.
+- Pruebas automatizadas: no sustituyen una lectura real del código impreso con la impresora ZYWELL.
