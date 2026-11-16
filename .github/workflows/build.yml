@@ -1,4 +1,4 @@
-name: Compilar v0.9 Windows
+name: Compilar v1.0 Windows y Android
 on:
   push:
     branches: [main]
@@ -15,18 +15,37 @@ jobs:
         with:
           python-version: '3.12'
       - name: Instalar dependencias
-        run: python -m pip install -r desktop/requirements.txt
-      - name: Comprobar código
-        run: python -m py_compile desktop/control_entradas.py desktop/ticket_printer.py
-      - name: Pruebas de control e impresión
-        run: |
-          python -m pip install opencv-python-headless numpy
-          python -m unittest discover -s tests -v
-      - name: Compilar EXE
-        run: pyinstaller --noconfirm --clean --onefile --windowed --hidden-import=win32print --name ControlEntradas_Windows_v0.9 desktop/control_entradas.py
+        run: python -m pip install -r desktop/requirements.txt opencv-python-headless numpy
+      - name: Ejecutar pruebas
+        run: python -m unittest discover -s tests -v
+      - name: Compilar aplicación con módulos de plano y exportación
+        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --name ControlEntradas_Windows_v1.0 desktop/control_entradas.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_Windows_v0.9
-          path: dist/ControlEntradas_Windows_v0.9.exe
+          name: ControlEntradas_Windows_v1.0
+          path: dist/ControlEntradas_Windows_v1.0.exe
+          if-no-files-found: error
+          retention-days: 30
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Instalar SDK Android 35
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Compilar APK debug
+        run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ControlEntradas_Android_v1.0_debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

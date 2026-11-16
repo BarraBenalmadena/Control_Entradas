@@ -128,6 +128,12 @@ TEMPLATES = (
     '08 · Escenario',
     '09 · Tríptico',
     '10 · Minimalista',
+    '11 · Institucional formal',
+    '12 · Ayuntamiento',
+    '13 · Auditorio clásico',
+    '14 · Programa cultural',
+    '15 · Elegancia minimal',
+    '16 · Talón municipal',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -140,6 +146,8 @@ DEFAULT_LOGO_POSITIONS = (
     'Extremos', 'Juntos a la izquierda', 'Extremos', 'Centrados',
     'Juntos a la derecha', 'Extremos', 'Juntos a la izquierda',
     'Apilados a la derecha', 'Juntos a la derecha', 'Centrados',
+    'Extremos', 'Juntos a la izquierda', 'Extremos',
+    'Juntos a la derecha', 'Centrados', 'Apilados a la izquierda',
 )
 
 
@@ -267,6 +275,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     def hx(rel): return L+round(usable*rel/1000)
     def logo_at(src,a,b,c,d):
         if src is not None:
+            # Never let a logo invade the decorative frame (or overlap the cut zone).
+            a=max(15,min(985,a));c=max(a+1,min(985,c))
+            b=max(14,min(98,b));d=max(b+1,min(103,d))
             _fitted(im,src,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
     title_box=(140,15,860,80)
     subtitle_box=(140,79,860,110)
@@ -301,8 +312,8 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     elif logo_pos=='Centrados':
         logo_at(ayto,330,5,485,61)
         logo_at(centro,515,5,670,61)
-        title_box=(25,62,975,93)
-        subtitle_box=(25,92,975,113)
+        title_box=(25,65,975,92)
+        subtitle_box=(25,93,975,112)
     # Si no se facilitan logos no se reserva artificialmente espacio para su ancho.
     if ayto is None and centro is None:
         title_box=(12,14,988,79)
@@ -363,11 +374,41 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         photo((8,125,336,483),frame=True)
         draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='black',width=stroke)
         event_text(351,982,title_y=(131,239),day_y=(249,306),time_y=(313,399),place_y=(404,474),title_sz=47)
-    else:  # 10 Minimalista: imagen estrecha, texto amplio, líneas finas
+    elif kind==9:  # Minimalista
         photo((8,129,204,477))
         if poster:
             draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='black',width=stroke)
         event_text(225 if poster else 35,979,title_y=(152,257),day_y=(267,326),time_y=(337,411),place_y=(422,474),title_sz=51)
+    elif kind==10:  # Institucional formal: imagen opcional fina a la izquierda
+        photo((10,130,254,477))
+        event_text(270 if poster else 32,968,title_y=(140,258),day_y=(267,326),time_y=(327,412),place_y=(419,470),title_sz=46)
+        hline(130,260,987)
+    elif kind==11:  # Ayuntamiento: fecha en una columna y cartel a la derecha
+        bodytext(label,(28,140,990,234),53,lines=2,min_size=18)
+        photo((612,235,991,472),frame=bool(poster))
+        bodytext(day,(25,245,595,322),41,lines=1,factor=date_factor)
+        bodytext(when,(25,332,595,405),51,lines=1,factor=date_factor)
+        bodytext(place,(25,407,605,477),22,lines=2)
+    elif kind==12:  # Auditorio clásico: formal sin cartel dominante
+        draw.line((br(48,141,950,141)[0],y(141),br(48,141,950,141)[2],y(141)),fill='black',width=stroke)
+        bodytext(label,(50,160,950,294),56,lines=3,min_size=19)
+        bodytext(day+'     '+when,(55,310,945,380),37,lines=1,factor=date_factor)
+        bodytext(place,(55,395,945,474),28,lines=2)
+    elif kind==13:  # Programa cultural: poster alto y texto a la izquierda
+        photo((672,135,981,475),frame=bool(poster))
+        event_text(24,660,title_y=(155,263),day_y=(269,326),time_y=(334,401),place_y=(411,473),title_sz=46)
+        draw.line((br(665,134,665,476)[0],y(134),br(665,134,665,476)[0],y(476)),fill='black',width=stroke)
+    elif kind==14:  # Elegancia minimal: poster horizontal discreto
+        photo((12,136,988,274))
+        bodytext(label,(25,277,975,357),44,lines=2)
+        bodytext(day+'   '+when,(25,361,975,424),40,lines=1,factor=date_factor)
+        bodytext(place,(25,427,975,479),23,lines=2)
+    else:  # Talón municipal: plano institucional, doble renglón
+        bodytext(label,(25,140,980,245),54,lines=2)
+        hline(255,20,978)
+        bodytext(day,(25,260,565,356),43,lines=1,factor=date_factor)
+        bodytext(when,(580,260,968,356),50,lines=1,factor=date_factor)
+        bodytext(place,(25,368,970,472),33,lines=2)
     hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
@@ -396,7 +437,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     caption_y+=sz(27)
     text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
              (stub_left,caption_y,stub_right,caption_y+sz(43)),16,lines=2,min_size=9)
-    text_box('1 PERSONA',(stub_left,y(473),stub_right,y(514)),25,lines=1,min_size=12)
+    text_box('1 PERSONA',(stub_left,y(468),stub_right,y(525)),29,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(534),stub_right,y(562)),15,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 

@@ -3,3 +3,5 @@ qrcode[pil]>=8,<9
 reportlab>=4.2,<5
 pyinstaller>=6.10,<7
 pywin32>=306,<312; platform_system=="Windows"
+
+PyMuPDF>=1.24,<2

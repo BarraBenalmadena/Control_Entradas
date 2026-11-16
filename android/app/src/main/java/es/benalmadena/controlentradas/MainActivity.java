@@ -38,6 +38,9 @@ import com.google.mlkit.vision.common.InputImage;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -73,11 +76,19 @@ public class MainActivity extends AppCompatActivity {
     private String lastScan = "";
     private boolean scannerStarted = false;
     private ActivityResultLauncher<String> permissionLauncher;
+    private ActivityResultLauncher<String[]> jsonImporter;
+    private ActivityResultLauncher<String> auditExporter;
+    private OfflineManager offline;
+    private Spinner validationMode;
+    private EditText rangeFrom, rangeTo, coordinatorIp, coordinatorPin;
+    private TextView offlineStatus;
+    private Button coordinatorButton;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         publicKey = prefs.getString("pubkey", "");
+        offline = new OfflineManager(this);
         deviceId = prefs.getString("device", "");
         if (deviceId.isEmpty()) {
             deviceId = UUID.randomUUID().toString();
@@ -86,11 +97,53 @@ public class MainActivity extends AppCompatActivity {
         permissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestPermission(), allowed -> {
             if (allowed) startScanner(); else showResult("PERMISO DE CÁMARA DENEGADO", Color.RED);
         });
+        auditExporter=registerForActivityResult(new ActivityResultContracts.CreateDocument("application/json"),uri->{
+            if(uri==null)return;
+            executor.execute(()->{
+                try(OutputStream out=getContentResolver().openOutputStream(uri)){
+                    if(out==null)throw new Exception("No se pudo guardar el archivo");
+                    JSONObject report=offline.accessAudit(deviceId);
+                    out.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                    runOnUiThread(()->showResult("REGISTRO DE ACCESOS EXPORTADO\nImporta el JSON de accesos en Windows",Color.rgb(20,122,71)));
+                }catch(Exception ex){runOnUiThread(()->showResult("NO SE PUDO EXPORTAR\n"+ex.getMessage(),Color.RED));}
+            });
+        });
+        jsonImporter = registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+            if(uri==null)return;
+            executor.execute(()->{
+                try(InputStream stream=getContentResolver().openInputStream(uri)) {
+                    if(stream==null)throw new Exception("No se pudo abrir el archivo");
+                    ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+                    byte[] block=new byte[8192];int n;
+                    while((n=stream.read(block))!=-1){bytes.write(block,0,n);if(bytes.size()>4_000_000)throw new Exception("JSON demasiado grande");}
+                    String raw=bytes.toString("UTF-8");
+                    String key=new JSONObject(raw).getString("public_key");
+                    String prior=prefs.getString("pubkey", "");
+                    if(!prior.isEmpty()&&!prior.equals(key))throw new Exception("Firma de otro ordenador. No se puede reemplazar una clave vinculada sin revisión.");
+                    if(prior.isEmpty()){
+                        String fp=OfflineManager.fingerprint(key);
+                        runOnUiThread(()->new AlertDialog.Builder(this)
+                            .setTitle("Verifica la firma de Windows")
+                            .setMessage("Huella SHA-256 (16 caracteres):\n"+fp+"\n\nComprueba que coincide con la que aparece en Control de Entradas para Windows. La primera importación fija la clave de confianza de este móvil.")
+                            .setNegativeButton("Cancelar",(d,w)->{})
+                            .setPositiveButton("He comprobado la huella",(d,w)->importVerified(raw))
+                            .show());
+                    }else importVerified(raw);
+                }catch(Exception ex){runOnUiThread(()->showResult("ERROR AL IMPORTAR JSON\n"+ex.getMessage(),Color.RED));}
+            });
+        });
         BarcodeScannerOptions options = new BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build();
         scanner = BarcodeScanning.getClient(options);
         createUi();
-        try { setEvents(new JSONArray(prefs.getString("events", "[]"))); }
-        catch (Exception ignored) { }
+        try {
+            if(offline.hasPackage()) {
+                publicKey=offline.importedKey();
+                setEvents(new JSONArray().put(offline.event()));
+                validationMode.setSelection(prefs.getInt("scan_mode",1));
+                offlineStatus.setText("JSON firmado cargado · "+offline.ticketCount()+" entradas · sin IP de Windows");
+            }else setEvents(new JSONArray(prefs.getString("events", "[]")));
+        }catch (Exception ignored) { }
     }
 
     private int dp(int v) { return (int)(getResources().getDisplayMetrics().density * v + 0.5f); }
@@ -119,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(layout);
         setContentView(scroll);
         layout.addView(text("CONTROL DE ENTRADAS", 23, true));
-        layout.addView(text("Escuela Municipal de Música y Danza · v0.1", 12, false));
+        layout.addView(text("Escuela Municipal de Música y Danza · v1.0", 12, false));
         connectionView = text("Sin conexión · Vincula este móvil al servidor Windows", 13, true);
         layout.addView(connectionView);
         serverInput = new EditText(this);
@@ -138,6 +191,48 @@ public class MainActivity extends AppCompatActivity {
         Button connect = button("Conectar / actualizar funciones");
         layout.addView(connect);
         connect.setOnClickListener(v -> connectServer());
+        layout.addView(text("Modo de validación", 13, true));
+        validationMode=new Spinner(this);
+        ArrayList<String> modes=new ArrayList<>();
+        modes.add("Servidor Windows (misma red)");
+        modes.add("JSON offline (rangos separados)");
+        modes.add("Coordinador: este móvil");
+        modes.add("Lector conectado a otro móvil");
+        validationMode.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,modes));
+        validationMode.setSelection(prefs.getInt("scan_mode",0));
+        layout.addView(validationMode);
+        validationMode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+                prefs.edit().putInt("scan_mode",position).apply();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        Button importJson=button("IMPORTAR JSON FIRMADO DE WINDOWS");
+        layout.addView(importJson);
+        importJson.setOnClickListener(v->jsonImporter.launch(new String[]{"application/json","text/plain","*/*"}));
+        Button exportAccess=button("EXPORTAR ACCESOS PARA WINDOWS (JSON)");
+        layout.addView(exportAccess);
+        exportAccess.setOnClickListener(v->auditExporter.launch("Accesos_"+offline.eventId()+".json"));
+        offlineStatus=text("No hay JSON offline importado",12,true);layout.addView(offlineStatus);
+        layout.addView(text("Sin red: asigna rangos de números DISTINTOS a cada móvil",11,false));
+        LinearLayout ranges=new LinearLayout(this);ranges.setOrientation(LinearLayout.HORIZONTAL);
+        rangeFrom=new EditText(this);rangeFrom.setHint("Desde, ej. 1");rangeFrom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        rangeTo=new EditText(this);rangeTo.setHint("Hasta, ej. 200");rangeTo.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        rangeFrom.setText(prefs.getString("range_from",""));rangeTo.setText(prefs.getString("range_to",""));
+        ranges.addView(rangeFrom,new LinearLayout.LayoutParams(0,dp(55),1));
+        ranges.addView(rangeTo,new LinearLayout.LayoutParams(0,dp(55),1));
+        layout.addView(ranges);
+        layout.addView(text("Coordinación entre móviles: usa un hotspot o Wi-Fi común (sin ordenador).",11,false));
+        coordinatorIp=new EditText(this);coordinatorIp.setSingleLine(true);
+        coordinatorIp.setHint("IP del móvil coordinador (ej. 192.168.43.1)");
+        coordinatorIp.setText(prefs.getString("coord_ip",""));layout.addView(coordinatorIp);
+        coordinatorPin=new EditText(this);coordinatorPin.setSingleLine(true);
+        coordinatorPin.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        coordinatorPin.setHint("PIN de 6 cifras");
+        coordinatorPin.setText(prefs.getString("coord_pin",""));layout.addView(coordinatorPin);
+        coordinatorButton=button("INICIAR COORDINADOR EN ESTE MÓVIL");
+        layout.addView(coordinatorButton);
+        coordinatorButton.setOnClickListener(v->toggleCoordinator());
         layout.addView(text("Función que se va a controlar", 13, true));
         eventSpinner = new Spinner(this);
         layout.addView(eventSpinner);
@@ -179,6 +274,53 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(sync);
         sync.setOnClickListener(v -> syncPending());
         refreshPending();
+    }
+
+    private void importVerified(String raw){
+        executor.execute(()->{
+            try{
+                JSONObject event=offline.load(raw,true);
+                publicKey=offline.importedKey();
+                prefs.edit().putString("pubkey",publicKey).apply();
+                runOnUiThread(()->{
+                    setEvents(new JSONArray().put(event));
+                    validationMode.setSelection(1);
+                    offlineStatus.setText("Archivo verificado: "+event.optString("name")+" · "+offline.ticketCount()+" entradas");
+                    showResult("JSON AUTÉNTICO IMPORTADO\nSelecciona el modo de validación",Color.rgb(20,122,71));
+                });
+            }catch(Exception ex){runOnUiThread(()->showResult("JSON RECHAZADO\n"+ex.getMessage(),Color.RED));}
+        });
+    }
+    private void toggleCoordinator(){
+        if(offline.hosting()){
+            offline.stopHost();coordinatorButton.setText("INICIAR COORDINADOR EN ESTE MÓVIL");
+            showResult("COORDINADOR DETENIDO",Color.rgb(130,82,0));return;
+        }
+        try{
+            String code=coordinatorPin.getText().toString().trim();
+            if(!code.matches("[0-9]{6}"))throw new Exception("Escribe un PIN de seis cifras");
+            offline.startHost(code);
+            prefs.edit().putString("coord_pin",code).apply();
+            validationMode.setSelection(2);
+            coordinatorButton.setText("DETENER COORDINADOR");
+            offlineStatus.setText("Coordinador activo · IP: "+OfflineManager.ips()+" · Puerto "+OfflineManager.PORT);
+            showResult("COORDINADOR ACTIVO\nMantén esta pantalla abierta y conecta los lectores al mismo hotspot o Wi-Fi.",Color.rgb(20,122,71));
+        }catch(Exception ex){showResult("NO SE PUDO INICIAR COORDINADOR\n"+ex.getMessage(),Color.RED);}
+    }
+    private JSONObject coordinatorRequest(String qr,String event,String host,String pin) throws Exception {
+        if(!host.matches("[0-9.]+"))throw new Exception("Escribe la dirección IPv4 del coordinador");
+        java.net.HttpURLConnection c=(java.net.HttpURLConnection)new URL("http://"+host+":"+OfflineManager.PORT+"/validate").openConnection();
+        try{
+            c.setConnectTimeout(2500);c.setReadTimeout(3500);c.setRequestMethod("POST");
+            c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=utf-8");
+            byte[] body=new JSONObject().put("qr",qr).put("event_id",event).put("pin",pin).put("device_id",deviceId).toString().getBytes(StandardCharsets.UTF_8);
+            c.setFixedLengthStreamingMode(body.length);
+            try(OutputStream out=c.getOutputStream()){out.write(body);}
+            if(c.getResponseCode()!=200)throw new IOException("Sin respuesta del móvil coordinador");
+            ByteArrayOutputStream b=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()){byte[] block=new byte[1024];int n;while((n=in.read(block))!=-1){b.write(block,0,n);if(b.size()>20000)throw new IOException("Respuesta demasiado grande");}}
+            return new JSONObject(b.toString("UTF-8"));
+        }finally{c.disconnect();}
     }
 
     private void setEvents(JSONArray rows) {
@@ -260,6 +402,8 @@ public class MainActivity extends AppCompatActivity {
             try {
                 JSONObject info = request("/api/status", null);
                 String pk = info.getString("public_key");
+                String known=prefs.getString("pubkey", "");
+                if(!known.isEmpty() && !known.equals(pk))throw new Exception("Clave de otro ordenador. Comprueba el organizador.");
                 JSONArray list = info.getJSONArray("events");
                 prefs.edit().putString("pubkey",pk).putString("events", list.toString()).apply();
                 publicKey = pk;
@@ -309,25 +453,46 @@ public class MainActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
     private void processQr(String qr) {
-        String event = currentEventId();
-        if(event.isEmpty()) { showResult("SELECCIONA UNA FUNCIÓN",Color.RED); analyzing.set(false); return; }
+        String event=currentEventId();
+        if(event.isEmpty()){showResult("SELECCIONA UNA FUNCIÓN",Color.RED);analyzing.set(false);return;}
+        int mode=validationMode.getSelectedItemPosition();
+        String first=rangeFrom.getText().toString().trim(),last=rangeTo.getText().toString().trim();
+        String host=coordinatorIp.getText().toString().trim(),secret=coordinatorPin.getText().toString().trim();
+        prefs.edit().putString("range_from",first).putString("range_to",last)
+                .putString("coord_ip",host).putString("coord_pin",secret).apply();
+        if(mode==1 && (first.isEmpty()||last.isEmpty())){
+            showResult("CONFIGURA TU RANGO EXCLUSIVO ANTES DE ESCANEAR",Color.RED);analyzing.set(false);return;
+        }
         showResult("COMPROBANDO ENTRADA...",Color.rgb(130,82,0));
-        executor.execute(() -> {
+        executor.execute(()->{
             try {
-                JSONObject body = new JSONObject().put("qr",qr).put("event_id",event).put("device_id",deviceId);
-                JSONObject response = request("/api/validate",body);
-                String status = response.optString("status");
-                String result = response.optString("message", status);
-                if("valid".equals(status)) result += "\nN.º " + response.optInt("number") + (response.isNull("seat")? "" : "\n" + response.optString("seat"));
-                String finalMessage = result;
-                int color = "valid".equals(status) ? Color.rgb(20,122,71) : Color.RED;
-                runOnUiThread(() -> showResult(finalMessage,color));
-            } catch(Exception ex) {
-                if(emergencyMode.isChecked() && ex instanceof java.io.IOException) offlineAccept(qr,event);
-                else runOnUiThread(() -> showResult("SIN CONEXIÓN: NO VALIDADO\n"+ex.getMessage(),Color.RED));
-            } finally {
-                runOnUiThread(() -> analyzing.set(false));
-            }
+                JSONObject response;
+                if(mode==0){
+                    try{
+                        JSONObject body=new JSONObject().put("qr",qr).put("event_id",event).put("device_id",deviceId);
+                        response=request("/api/validate",body);
+                    }catch(Exception ex){
+                        if(emergencyMode.isChecked() && ex instanceof java.io.IOException){offlineAccept(qr,event);return;}
+                        throw ex;
+                    }
+                }else if(mode==1){
+                    int from=Integer.parseInt(first),to=Integer.parseInt(last);
+                    if(from<1||to<from)throw new Exception("Rango de números incorrecto");
+                    response=offline.validate(qr,event,deviceId,from,to);
+                }else if(mode==2){
+                    if(!offline.hosting())throw new Exception("Este móvil no está actuando como coordinador");
+                    response=offline.validate(qr,event,deviceId,1,Integer.MAX_VALUE);
+                }else if(mode==3){
+                    response=coordinatorRequest(qr,event,host,secret);
+                }else throw new Exception("Modo de validación desconocido");
+                String status=response.optString("status"),message=response.optString("message",status);
+                if("valid".equals(status))message+="\nN.º "+response.optInt("number")+
+                    (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
+                String finished=message;
+                runOnUiThread(()->showResult(finished,"valid".equals(status)?Color.rgb(20,122,71):Color.RED));
+            }catch(Exception ex){
+                runOnUiThread(()->showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED));
+            }finally{runOnUiThread(()->analyzing.set(false));}
         });
     }
     private JSONObject verifyLocal(String qr) throws Exception {
@@ -388,6 +553,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         if(cameraProvider!=null) cameraProvider.unbindAll();
         scanner.close();
+        if(offline!=null)offline.stopHost();
         executor.shutdownNow();
     }
 }

@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "0.9.0"
+VERSION = "1.0.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -106,6 +106,8 @@ def init_db():
             );
         """)
 
+    from seat_plan import ensure_schema
+    ensure_schema(DB_PATH)
 
 def iso_now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -150,6 +152,62 @@ def list_events():
                          (SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id) AS issued
                          FROM events e ORDER BY e.start_time DESC""").fetchall()
         return [dict(x) for x in rows]
+
+
+def export_offline_event(event_id: str, target: Path):
+    """Signed offline snapshot. Private key never leaves Windows.
+
+    Authoritative for one scanner only; for multiple phones coordinate via a
+    common host or assign disjoint ticket-number ranges.
+    """
+    with connect() as db:
+        event=db.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
+        if event is None:raise ValueError('La función no existe.')
+        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id WHERE t.event_id=? ORDER BY t.number",(event_id,)).fetchall()
+    data={'version':1,'created_at':iso_now(),'event':dict(event),
+          'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
+                      'used':bool(t['used_at']),'reserved':bool(t['reserved'])} for t in tickets]}
+    data64=b64u(json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
+    signature=PRIVATE_KEY.sign(data64.encode('ascii'),ec.ECDSA(hashes.SHA256()))
+    package={'format':'CE-OFFLINE-1','public_key':base64.b64encode(PUBLIC_KEY_DER).decode('ascii'),
+             'payload':data64,'signature':b64u(signature)}
+    target=Path(target)
+    target.write_text(json.dumps(package,ensure_ascii=False,indent=2),encoding='utf-8')
+    return len(tickets)
+
+
+def import_offline_access_log(path: Path):
+    """Merge local Android approvals. The document is an administrative log, not a signed attestation."""
+    report=json.loads(Path(path).read_text(encoding='utf-8'))
+    if report.get('format')!='CE-ACCESS-1':raise ValueError('Formato de registro de accesos no reconocido.')
+    event_id=str(report.get('event_id',''))
+    tids=report.get('ticket_ids')
+    if not isinstance(tids,list) or len(tids)>5000 or len(tids)!=len(set(tids)):
+        raise ValueError('Lista de entradas inválida o repetida')
+    if not all(isinstance(item,str) and len(item)==32 for item in tids):
+        raise ValueError('Identificador de entrada inválido')
+    device=str(report.get('device_id','desconocido'))[:80]
+    added=0;already=0;unknown=0
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if not db.execute('SELECT 1 FROM events WHERE id=?',(event_id,)).fetchone():
+            raise ValueError('No existe esta función en Windows')
+        for tid in tids:
+            row=db.execute('SELECT used_at FROM tickets WHERE id=? AND event_id=?',(tid,event_id)).fetchone()
+            if row is None:unknown+=1
+            elif row['used_at'] is not None:already+=1
+            else:
+                db.execute('UPDATE tickets SET used_at=?,used_by=? WHERE id=? AND event_id=? AND used_at IS NULL',(iso_now(),'offline:'+device,tid,event_id))
+                added+=1
+    return {'added':added,'already':already,'unknown':unknown,'total':len(tids)}
+
+
+def verify_offline_file(path: Path):
+    package=json.loads(Path(path).read_text('utf-8'))
+    if package.get('format')!='CE-OFFLINE-1':raise ValueError('Formato de exportación incorrecto')
+    pub=serialization.load_der_public_key(base64.b64decode(package['public_key']))
+    pub.verify(unb64u(package['signature']),package['payload'].encode('ascii'),ec.ECDSA(hashes.SHA256()))
+    return json.loads(unb64u(package['payload']))
 
 
 def delete_event(event_id: str) -> dict:
@@ -389,7 +447,7 @@ def launch_gui():
     import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v0.5")
+    root.title("Control de Entradas · v1.0")
     root.geometry("1050x740")
     root.minsize(820, 550)
     style = ttk.Style()
@@ -404,14 +462,17 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · Prototipo 0.7", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v1.0 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
     urls = "   ·   ".join("http://" + ip + ":" + str(PORT) for ip in lan_ips()) or "Consulta la dirección IPv4 del ordenador (ipconfig)"
     ttk.Label(net_frame, text="Servidor: " + urls, wraplength=900).pack(anchor="w")
     ttk.Label(net_frame, text="PIN de conexión: " + ACCESS_PIN, font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(net_frame, text="El ordenador debe permanecer encendido; los móviles deben conectarse a la misma red local.").pack(anchor="w")
+    import hashlib
+    fingerprint=hashlib.sha256(PUBLIC_KEY_DER).hexdigest().upper()[:16]
+    ttk.Label(net_frame, text="Huella firma para JSON offline: " + fingerprint).pack(anchor="w")
+    ttk.Label(net_frame, text="Con servidor Windows se usa Wi-Fi local. Para funcionar sin él, exporta un JSON firmado e impórtalo en la APK.").pack(anchor="w")
 
     form = ttk.LabelFrame(container, text="1. Crear y guardar una función", padding=(10, 7))
     form.pack(fill="x", pady=(9, 0))
@@ -464,6 +525,15 @@ def launch_gui():
     ttk.Label(container,text='Ticket de referencia: logo + imagen del espectáculo + número + QR pequeño. Papel 80/58 mm, corte opcional.',
               foreground='#225778').pack(anchor='w', pady=(0,6))
 
+    other_actions=ttk.Frame(container)
+    other_actions.pack(fill='x',pady=(0,7))
+    plan_btn=ttk.Button(other_actions,text='PLANO DE BUTACAS · Clicar y reservar',style='Action.TButton')
+    plan_btn.pack(side='left',fill='x',expand=True,padx=(0,6))
+    offline_btn=ttk.Button(other_actions,text='EXPORTAR JSON PARA APK (SIN IP)',style='Action.TButton')
+    offline_btn.pack(side='left',fill='x',expand=True,padx=(6,0))
+    sync_btn=ttk.Button(container,text='IMPORTAR ACCESOS DE MÓVILES (JSON)',style='Other.TButton')
+    sync_btn.pack(fill='x',pady=(0,7))
+
     list_frame = ttk.LabelFrame(container, text="Funciones guardadas (selecciona una)", padding=9)
     list_frame.pack(fill="both", expand=True)
     cols = ("nombre", "fecha", "tipo", "aforo", "accesos")
@@ -486,7 +556,7 @@ def launch_gui():
 
     def update_buttons(*_):
         state = "normal" if tree.selection() else "disabled"
-        for button in (preview_btn, save_btn, print_btn, delete_btn, zywell_btn):
+        for button in (preview_btn, save_btn, print_btn, delete_btn, zywell_btn, plan_btn, offline_btn, sync_btn):
             button.configure(state=state)
 
     def refresh():
@@ -882,7 +952,7 @@ def launch_gui():
                 d=current_design(save=True)
                 ev,tkdata=get_ticket(event_id,numbers[0])
                 gallery_win=tk.Toplevel(win)
-                gallery_win.title('Elegir entre 10 modelos de ticket')
+                gallery_win.title('Elegir modelo de ticket')
                 gallery_win.geometry('1090x700')
                 gallery_win.minsize(850,530)
                 shell=ttk.Frame(gallery_win,padding=7);shell.pack(fill='both',expand=True)
@@ -1006,7 +1076,7 @@ def launch_gui():
             threading.Thread(target=worker,daemon=True).start()
 
         ttk.Button(actions,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
-        ttk.Button(actions,text='VER 10 DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
+        ttk.Button(actions,text='VER DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
         ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
@@ -1014,6 +1084,57 @@ def launch_gui():
         print_button=ttk.Button(actions,text='IMPRIMIR LOTE',command=print_batch,style='Action.TButton')
         print_button.pack(side='right',padx=3)
         ttk.Label(outer,text='Primero calibra con la tira de prueba. Usa el modo ZYWELL compatible; si no corta, necesitamos el modelo exacto.',foreground='#7a4630').pack(anchor='w',pady=8)
+
+    def open_seat_plan():
+        eid=selected_event()
+        if not eid:return
+        ev=next((e for e in list_events() if e['id']==eid),None)
+        if not ev or ev['mode']!='numerada':
+            messagebox.showinfo('Plano de butacas','El editor de plano se utiliza con funciones numeradas. Crea una función en modalidad numerada.',parent=root)
+            return
+        try:
+            import seat_plan
+            seat_plan.open_editor(root,eid,DB_PATH,DATA_DIR,ev['name'])
+        except Exception as ex:
+            messagebox.showerror('Plano de butacas',str(ex),parent=root)
+
+    def save_offline_package():
+        eid=selected_event()
+        if not eid:return
+        ev=next((e for e in list_events() if e['id']==eid),None)
+        if not ev:return
+        path=filedialog.asksaveasfilename(title='Exportar función firmada para Android',
+                   initialfile='Evento_'+eid[:8]+'_firmado.json',defaultextension='.json',filetypes=[('Archivo JSON','*.json')])
+        if not path:return
+        try:
+            total=export_offline_event(eid,Path(path))
+            messagebox.showinfo('Archivo firmado exportado',
+                f'Exportación terminada: {total} entradas.\n\nArchivo: {path}\n\n'
+                'Importa este JSON en cada móvil mediante la APK.\n'
+                'Si escaneas en varios móviles SIN conexión entre ellos, asigna rangos distintos: '
+                'no pueden detectar duplicados entre dispositivos aislados.\n\n'
+                'No compartas este archivo públicamente: contiene el inventario de entradas.',parent=root)
+        except Exception as ex:
+            messagebox.showerror('No se pudo exportar JSON',str(ex),parent=root)
+
+    def merge_offline_accesses():
+        path=filedialog.askopenfilename(title='Importar accesos registrados en Android',filetypes=[('Registro JSON','*.json')])
+        if not path:return
+        if not messagebox.askyesno('Fusionar accesos',
+            'Esta operación añadirá al historial de Windows los accesos que figuren en el JSON.\n'
+            'El registro procede del móvil y debe tratarse como un documento administrativo, no como prueba criptográfica.\n'
+            'No borrará los accesos ya existentes. ¿Continuar?',parent=root):return
+        try:
+            summary=import_offline_access_log(Path(path))
+            refresh()
+            messagebox.showinfo('Registro fusionado',
+                f'Nuevos accesos: {summary["added"]}\nYa registrados: {summary["already"]}\n'
+                f'Identificadores desconocidos: {summary["unknown"]}',parent=root)
+        except Exception as ex:messagebox.showerror('No se pudo importar',str(ex),parent=root)
+
+    plan_btn.configure(command=open_seat_plan)
+    offline_btn.configure(command=save_offline_package)
+    sync_btn.configure(command=merge_offline_accesses)
 
     zywell_btn.configure(command=open_thermal_ticket)
 
