@@ -341,7 +341,8 @@ public class MainActivity extends AppCompatActivity {
     private void shareSignedEvent(){
         try{
             if(!offline.hasPackage())throw new Exception("Importa primero un evento firmado");
-            File file=new File(getCacheDir(),"Evento_firmado_ControlEntradas.json");
+            File file=new File(new File(getCacheDir(),"share"),"Evento_firmado_ControlEntradas.json");
+            file.getParentFile().mkdirs();
             try(InputStream in=new java.io.FileInputStream(offline.storedPackage());
                 OutputStream out=new FileOutputStream(file)){
                 byte[] buf=new byte[8192];int n;
