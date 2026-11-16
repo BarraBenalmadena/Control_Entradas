@@ -43,11 +43,22 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Compilar APK debug
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
-      - name: Generar APK y AAB de prueba
+      - name: Generar AAB de prueba
         run: gradle -p android :app:bundleDebug --no-daemon
+      - name: Nombrar archivos sin sufijos
+        run: |
+          mkdir -p dist-android
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist-android/ControlEntradas_Android.apk
+          cp android/app/build/outputs/bundle/debug/app-debug.aab dist-android/ControlEntradas_Android.aab
       - uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Android
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: dist-android/ControlEntradas_Android.apk
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ControlEntradas_AAB
+          path: dist-android/ControlEntradas_Android.aab
           if-no-files-found: error
           retention-days: 30
