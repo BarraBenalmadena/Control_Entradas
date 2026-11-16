@@ -4,6 +4,19 @@ import android.Manifest;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.content.Intent;
+import android.net.Uri;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
+import android.os.Build;
+import android.view.WindowManager;
+import androidx.core.content.FileProvider;
+import android.util.Size;
+import java.io.File;
+import java.io.FileOutputStream;
+
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Base64;
@@ -60,7 +73,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MainActivity extends AppCompatActivity {
     private static final String PREFS = "control_entradas_v01";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean analyzing = new AtomicBoolean(false);
+    private final AtomicBoolean analyzing = new AtomicBoolean(false); // validación de acceso en curso
+    private final AtomicBoolean frameBusy = new AtomicBoolean(false); // una imagen ML Kit a la vez
+    private final ExecutorService cameraExecutor = Executors.newSingleThreadExecutor();
+    private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 85);
+    private boolean continuousEnabled = true;
+    private String blockedQr = "";
+    private long lastQrVisibleMs = 0L;
+    private androidx.camera.core.Camera activeCamera;
+
     private EditText serverInput, pinInput;
     private TextView statusView, connectionView, counterView, queueView;
     private Spinner eventSpinner;
@@ -72,8 +93,6 @@ public class MainActivity extends AppCompatActivity {
     private String publicKey = "", deviceId = "";
     private BarcodeScanner scanner;
     private ProcessCameraProvider cameraProvider;
-    private long lastScanMs = 0L;
-    private String lastScan = "";
     private boolean scannerStarted = false;
     private ActivityResultLauncher<String> permissionLauncher;
     private ActivityResultLauncher<String[]> jsonImporter;
@@ -144,6 +163,7 @@ public class MainActivity extends AppCompatActivity {
                 offlineStatus.setText("JSON firmado cargado · "+offline.ticketCount()+" entradas · sin IP de Windows");
             }else setEvents(new JSONArray(prefs.getString("events", "[]")));
         }catch (Exception ignored) { }
+        if(offline.hasPackage()) cameraView.post(()->ensureContinuousScanner());
     }
 
     private int dp(int v) { return (int)(getResources().getDisplayMetrics().density * v + 0.5f); }
@@ -172,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(layout);
         setContentView(scroll);
         layout.addView(text("CONTROL DE ENTRADAS", 23, true));
-        layout.addView(text("Escuela Municipal de Música y Danza · v1.0", 12, false));
+        layout.addView(text("Escuela Municipal de Música y Danza · v1.1 · escaneo continuo", 12, false));
         connectionView = text("Sin conexión · Vincula este móvil al servidor Windows", 13, true);
         layout.addView(connectionView);
         serverInput = new EditText(this);
@@ -191,7 +211,8 @@ public class MainActivity extends AppCompatActivity {
         Button connect = button("Conectar / actualizar funciones");
         layout.addView(connect);
         connect.setOnClickListener(v -> connectServer());
-        layout.addView(text("Modo de validación", 13, true));
+        TextView modeLabel=text("Modo de validación", 13, true);
+        layout.addView(modeLabel);
         validationMode=new Spinner(this);
         ArrayList<String> modes=new ArrayList<>();
         modes.add("Servidor Windows (misma red)");
@@ -233,18 +254,29 @@ public class MainActivity extends AppCompatActivity {
         coordinatorButton=button("INICIAR COORDINADOR EN ESTE MÓVIL");
         layout.addView(coordinatorButton);
         coordinatorButton.setOnClickListener(v->toggleCoordinator());
-        layout.addView(text("Función que se va a controlar", 13, true));
+        TextView eventLabel=text("Función que se va a controlar", 13, true);
+        layout.addView(eventLabel);
         eventSpinner = new Spinner(this);
         layout.addView(eventSpinner);
-        Button camera = button("Iniciar escáner QR");
+        Button camera = button("PAUSAR CÁMARA");
         layout.addView(camera);
         camera.setOnClickListener(v -> {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startScanner();
-            else permissionLauncher.launch(Manifest.permission.CAMERA);
+            continuousEnabled = !continuousEnabled;
+            if (continuousEnabled) {
+                camera.setText("PAUSAR CÁMARA");
+                ensureContinuousScanner();
+            } else {
+                camera.setText("REANUDAR CÁMARA");
+                if(cameraProvider!=null) cameraProvider.unbindAll();
+                scannerStarted=false;
+                cameraView.setVisibility(View.GONE);
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                showResult("CÁMARA PAUSADA", Color.rgb(130,82,0));
+            }
         });
         cameraView = new PreviewView(this);
         cameraView.setVisibility(View.GONE);
-        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(240)));
+        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(290)));
         statusView = text("Listo para conectar", 21, true);
         statusView.setGravity(Gravity.CENTER);
         statusView.setPadding(dp(12), dp(18), dp(12), dp(18));
@@ -273,7 +305,73 @@ public class MainActivity extends AppCompatActivity {
         Button sync = button("Sincronizar accesos pendientes");
         layout.addView(sync);
         sync.setOnClickListener(v -> syncPending());
+        // El lector y la información de la función quedan visibles SIN desplazarse
+        // por todos los controles de red. Los ajustes se abren solo cuando se necesiten.
+        LinearLayout fastPanel=new LinearLayout(this);
+        fastPanel.setOrientation(LinearLayout.VERTICAL);
+        fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
+        fastPanel.setBackgroundColor(Color.WHITE);
+        View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
+                offlineStatus,cameraView,camera,statusView,counterView,queueView};
+        for(View view:quick) layout.removeView(view);
+        LinearLayout settingsPanel=new LinearLayout(this);
+        settingsPanel.setOrientation(LinearLayout.VERTICAL);
+        while(layout.getChildCount()>2){
+            View view=layout.getChildAt(2);
+            layout.removeViewAt(2);
+            settingsPanel.addView(view);
+        }
+        for(View view:quick) fastPanel.addView(view);
+        layout.addView(fastPanel);
+        Button settingsToggle=button("MOSTRAR AJUSTES DE RED Y SINCRONIZACIÓN");
+        layout.addView(settingsToggle);
+        settingsPanel.setVisibility(View.GONE);
+        layout.addView(settingsPanel);
+        settingsToggle.setOnClickListener(v->{
+            boolean open=settingsPanel.getVisibility()!=View.VISIBLE;
+            settingsPanel.setVisibility(open?View.VISIBLE:View.GONE);
+            settingsToggle.setText(open?"OCULTAR AJUSTES":"MOSTRAR AJUSTES DE RED Y SINCRONIZACIÓN");
+        });
+        Button shareButton=button("COMPARTIR JSON CON OTRO MÓVIL");
+        fastPanel.addView(shareButton,5);
+        shareButton.setOnClickListener(v->shareSignedEvent());
         refreshPending();
+    }
+
+    private void shareSignedEvent(){
+        try{
+            if(!offline.hasPackage())throw new Exception("Importa primero un evento firmado");
+            File file=new File(getCacheDir(),"Evento_firmado_ControlEntradas.json");
+            try(InputStream in=new java.io.FileInputStream(offline.storedPackage());
+                OutputStream out=new FileOutputStream(file)){
+                byte[] buf=new byte[8192];int n;
+                while((n=in.read(buf))!=-1)out.write(buf,0,n);
+            }
+            Uri uri=FileProvider.getUriForFile(this,getPackageName()+".fileprovider",file);
+            Intent intent=new Intent(Intent.ACTION_SEND);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_STREAM,uri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent,"Enviar evento firmado"));
+        }catch(Exception e){showResult("NO SE PUEDE COMPARTIR: "+e.getMessage(),Color.RED);}
+    }
+
+    private void ensureContinuousScanner(){
+        if(!continuousEnabled || eventIds.isEmpty())return;
+        if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED){
+            startScanner();
+        }else permissionLauncher.launch(Manifest.permission.CAMERA);
+    }
+
+    private void scanFeedback(boolean accepted){
+        try{feedbackTone.startTone(accepted?ToneGenerator.TONE_PROP_ACK:ToneGenerator.TONE_PROP_NACK,accepted?100:240);}catch(Exception ignored){}
+        try{
+            Vibrator vib=(Vibrator)getSystemService(VIBRATOR_SERVICE);
+            if(vib!=null && vib.hasVibrator()){
+                if(Build.VERSION.SDK_INT>=26)vib.vibrate(VibrationEffect.createOneShot(accepted?80:230,VibrationEffect.DEFAULT_AMPLITUDE));
+                else vib.vibrate(accepted?80:230);
+            }
+        }catch(Exception ignored){}
     }
 
     private void importVerified(String raw){
@@ -286,7 +384,8 @@ public class MainActivity extends AppCompatActivity {
                     setEvents(new JSONArray().put(event));
                     validationMode.setSelection(1);
                     offlineStatus.setText("Archivo verificado: "+event.optString("name")+" · "+offline.ticketCount()+" entradas");
-                    showResult("JSON AUTÉNTICO IMPORTADO\nSelecciona el modo de validación",Color.rgb(20,122,71));
+                    showResult("JSON CARGADO · CÁMARA PREPARADA",Color.rgb(20,122,71));
+                    ensureContinuousScanner();
                 });
             }catch(Exception ex){runOnUiThread(()->showResult("JSON RECHAZADO\n"+ex.getMessage(),Color.RED));}
         });
@@ -345,6 +444,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
                 if(position < eventIds.size()) prefs.edit().putString("last_event", eventIds.get(position)).apply();
                 refreshCounter();
+                if(continuousEnabled && cameraView!=null) cameraView.post(()->ensureContinuousScanner());
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
@@ -416,41 +516,53 @@ public class MainActivity extends AppCompatActivity {
     }
     @androidx.camera.core.ExperimentalGetImage
     private void startScanner() {
-        if(scannerStarted) { cameraView.setVisibility(View.VISIBLE); return; }
-        scannerStarted = true;
+        if(!continuousEnabled || eventIds.isEmpty() || scannerStarted)return;
+        scannerStarted=true;
         cameraView.setVisibility(View.VISIBLE);
-        ListenableFuture<ProcessCameraProvider> provider = ProcessCameraProvider.getInstance(this);
-        provider.addListener(() -> {
-            try {
-                cameraProvider = provider.get();
-                Preview preview = new Preview.Builder().build();
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        ListenableFuture<ProcessCameraProvider> provider=ProcessCameraProvider.getInstance(this);
+        provider.addListener(()->{
+            try{
+                if(!continuousEnabled){scannerStarted=false;return;}
+                cameraProvider=provider.get();
+                Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
-                ImageAnalysis analysis = new ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
-                analysis.setAnalyzer(ContextCompat.getMainExecutor(this), image -> {
-                    if (analyzing.get()) { image.close(); return; }
-                    android.media.Image media = image.getImage();
-                    if(media == null) { image.close(); return; }
-                    InputImage input = InputImage.fromMediaImage(media, image.getImageInfo().getRotationDegrees());
-                    scanner.process(input).addOnSuccessListener(barcodes -> {
-                        for(Barcode barcode : barcodes) {
-                            String raw = barcode.getRawValue();
-                            if(raw != null && raw.startsWith("CE1.")) {
-                                long now = SystemClock.elapsedRealtime();
-                                if(raw.equals(lastScan) && now-lastScanMs<4000) break;
-                                if(analyzing.compareAndSet(false,true)) {
-                                    lastScan=raw; lastScanMs=now;
-                                    processQr(raw);
-                                }
-                                break;
+                ImageAnalysis analysis=new ImageAnalysis.Builder()
+                    .setTargetResolution(new Size(1280,720))
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build();
+                analysis.setAnalyzer(cameraExecutor, image->{
+                    if(!frameBusy.compareAndSet(false,true)){image.close();return;}
+                    android.media.Image media=image.getImage();
+                    if(media==null){frameBusy.set(false);image.close();return;}
+                    InputImage input=InputImage.fromMediaImage(media,image.getImageInfo().getRotationDegrees());
+                    scanner.process(input)
+                        .addOnSuccessListener(barcodes->{
+                            String candidate=null;
+                            for(Barcode barcode:barcodes){
+                                String value=barcode.getRawValue();
+                                if(value!=null && value.startsWith("CE1.")){candidate=value;break;}
                             }
-                        }
-                    }).addOnCompleteListener(task -> image.close());
+                            long now=SystemClock.elapsedRealtime();
+                            if(candidate==null){
+                                if(now-lastQrVisibleMs>700)blockedQr="";
+                                return;
+                            }
+                            boolean same=candidate.equals(blockedQr);
+                            lastQrVisibleMs=now;
+                            if(same || analyzing.get())return;
+                            if(analyzing.compareAndSet(false,true)){
+                                blockedQr=candidate;
+                                processQr(candidate);
+                            }
+                        })
+                        .addOnCompleteListener(task->{frameBusy.set(false);image.close();});
                 });
                 cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis);
-                showResult("APUNTA AL CÓDIGO QR", Color.rgb(130,82,0));
-            } catch(Exception e) { scannerStarted=false; showResult("ERROR DE CÁMARA: " + e.getMessage(),Color.RED); }
-        }, ContextCompat.getMainExecutor(this));
+                activeCamera=cameraProvider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis);
+                showResult("CÁMARA ACTIVA · APUNTA A LA SIGUIENTE ENTRADA",Color.rgb(20,122,71));
+            }catch(Exception e){scannerStarted=false;showResult("ERROR DE CÁMARA: "+e.getMessage(),Color.RED);}
+        },ContextCompat.getMainExecutor(this));
     }
     private void processQr(String qr) {
         String event=currentEventId();
@@ -460,8 +572,9 @@ public class MainActivity extends AppCompatActivity {
         String host=coordinatorIp.getText().toString().trim(),secret=coordinatorPin.getText().toString().trim();
         prefs.edit().putString("range_from",first).putString("range_to",last)
                 .putString("coord_ip",host).putString("coord_pin",secret).apply();
-        if(mode==1 && (first.isEmpty()||last.isEmpty())){
-            showResult("CONFIGURA TU RANGO EXCLUSIVO ANTES DE ESCANEAR",Color.RED);analyzing.set(false);return;
+        if(mode==1 && (first.isEmpty()!=last.isEmpty())){
+            showResult("INDICA AMBOS EXTREMOS DEL RANGO O DÉJALOS VACÍOS (SOLO UN MÓVIL)",Color.RED);
+            analyzing.set(false);return;
         }
         showResult("COMPROBANDO ENTRADA...",Color.rgb(130,82,0));
         executor.execute(()->{
@@ -476,7 +589,8 @@ public class MainActivity extends AppCompatActivity {
                         throw ex;
                     }
                 }else if(mode==1){
-                    int from=Integer.parseInt(first),to=Integer.parseInt(last);
+                    int from=first.isEmpty()?1:Integer.parseInt(first);
+                    int to=last.isEmpty()?Integer.MAX_VALUE:Integer.parseInt(last);
                     if(from<1||to<from)throw new Exception("Rango de números incorrecto");
                     response=offline.validate(qr,event,deviceId,from,to);
                 }else if(mode==2){
@@ -489,9 +603,10 @@ public class MainActivity extends AppCompatActivity {
                 if("valid".equals(status))message+="\nN.º "+response.optInt("number")+
                     (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
                 String finished=message;
-                runOnUiThread(()->showResult(finished,"valid".equals(status)?Color.rgb(20,122,71):Color.RED));
+                boolean accepted="valid".equals(status);
+                runOnUiThread(()->{showResult(finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);});
             }catch(Exception ex){
-                runOnUiThread(()->showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED));
+                runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);});
             }finally{runOnUiThread(()->analyzing.set(false));}
         });
     }
@@ -519,9 +634,9 @@ public class MainActivity extends AppCompatActivity {
             JSONArray pending = new JSONArray(prefs.getString("pending","[]"));
             pending.put(new JSONObject().put("qr",qr).put("event_id",event).put("device_id",deviceId));
             prefs.edit().putString("pending",pending.toString()).putBoolean(usedKey,true).commit();
-            runOnUiThread(() -> { showResult("ACCESO PROVISIONAL SIN RED\nN.º "+ticket.optInt("n") + (ticket.isNull("s") ? "" : "\n" + ticket.optString("s")) + "\nSOLO ESTE MÓVIL",Color.rgb(130,82,0)); refreshPending(); });
+            runOnUiThread(() -> { showResult("ACCESO PROVISIONAL SIN RED\nN.º "+ticket.optInt("n") + (ticket.isNull("s") ? "" : "\n" + ticket.optString("s")) + "\nSOLO ESTE MÓVIL",Color.rgb(130,82,0));scanFeedback(true);refreshPending(); });
         } catch(Exception ex) {
-            runOnUiThread(() -> showResult("ENTRADA RECHAZADA\n"+ex.getMessage(),Color.RED));
+            runOnUiThread(() -> {showResult("ENTRADA RECHAZADA\n"+ex.getMessage(),Color.RED);scanFeedback(false);});
         }
     }
     private void refreshPending() {
@@ -549,11 +664,17 @@ public class MainActivity extends AppCompatActivity {
         final int s=synced,c=conflicts,left=unsent.length();
         runOnUiThread(() -> { refreshPending(); showResult("SINCRONIZADOS: "+s+" · CONFLICTOS: "+c+" · PENDIENTES: "+left,c>0||left>0?Color.RED:Color.rgb(20,122,71)); });
     }
+    @Override protected void onResume(){
+        super.onResume();
+        if(cameraView!=null && continuousEnabled)cameraView.post(()->ensureContinuousScanner());
+    }
     @Override protected void onDestroy() {
         super.onDestroy();
         if(cameraProvider!=null) cameraProvider.unbindAll();
         scanner.close();
+        feedbackTone.release();
         if(offline!=null)offline.stopHost();
+        cameraExecutor.shutdownNow();
         executor.shutdownNow();
     }
 }
