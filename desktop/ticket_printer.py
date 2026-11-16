@@ -145,6 +145,14 @@ TEMPLATES = (
     '14 · Programa cultural',
     '15 · Elegancia minimal',
     '16 · Talón municipal',
+    '17 · Clásico centrado',
+    '18 · Danza geométrica',
+    '19 · Concierto elegante',
+    '20 · Teatro dividido',
+    '21 · Cine panorámico',
+    '22 · Acceso general',
+    '23 · Ornamental',
+    '24 · Diagonal moderna',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -159,6 +167,8 @@ DEFAULT_LOGO_POSITIONS = (
     'Apilados a la derecha', 'Juntos a la derecha', 'Centrados',
     'Extremos', 'Juntos a la izquierda', 'Extremos',
     'Juntos a la derecha', 'Centrados', 'Apilados a la izquierda',
+    'Extremos', 'Juntos a la izquierda', 'Extremos', 'Juntos a la derecha',
+    'Extremos', 'Centrados', 'Extremos', 'Apilados a la izquierda',
 )
 
 
@@ -414,12 +424,51 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(label,(25,277,975,357),44,lines=2)
         bodytext(day+'   '+when,(25,361,975,424),40,lines=1,factor=date_factor)
         bodytext(place,(25,427,975,479),23,lines=2)
-    else:  # Talón municipal: plano institucional, doble renglón
+    elif kind==16:  # Talón municipal: plano institucional, doble renglón
         bodytext(label,(25,140,980,245),54,lines=2)
         hline(255,20,978)
         bodytext(day,(25,260,565,356),43,lines=1,factor=date_factor)
         bodytext(when,(580,260,968,356),50,lines=1,factor=date_factor)
         bodytext(place,(25,368,970,472),33,lines=2)
+    elif kind==17:  # Clásico centrado; JPG como fondo suavizado
+        photo((8,125,993,482),soften=.88)
+        hline(144,35,965)
+        bodytext(label,(40,155,960,283),58,lines=2,min_size=18)
+        bodytext(day+'  ·  '+when,(45,291,955,367),39,lines=1,factor=date_factor)
+        bodytext(place,(50,385,950,472),29,lines=2)
+    elif kind==18:  # JPG diagonal suave con texto en tarjeta
+        photo((5,126,995,481),soften=.43)
+        draw.rectangle(br(420,140,986,475),fill='white',outline='black',width=stroke)
+        event_text(441,970,title_sz=39)
+    elif kind==19:  # Cartel grande y datos a la derecha
+        photo((8,127,620,480),frame=bool(poster))
+        draw.line((br(626,130,626,480)[0],y(130),br(626,130,626,480)[0],y(480)),fill='black',width=stroke)
+        event_text(642,987,title_sz=36)
+    elif kind==20:  # Teatro por columnas
+        bodytext(day,(18,155,365,240),37,lines=1,factor=date_factor)
+        bodytext(when,(18,255,365,338),49,lines=1,factor=date_factor)
+        bodytext(place,(18,352,365,475),24,lines=3)
+        draw.line((br(379,138,379,480)[0],y(138),br(379,138,379,480)[0],y(480)),fill='black',width=stroke)
+        photo((395,135,986,480),soften=.72)
+        bodytext(label,(414,185,971,405),51,lines=3,min_size=17)
+    elif kind==21:  # Cine: JPG en franja central
+        bodytext(label,(20,129,985,241),60,lines=2,min_size=18)
+        photo((18,245,980,378),frame=bool(poster))
+        bodytext(f'{day}     {when}',(25,382,970,435),38,lines=1,factor=date_factor)
+        bodytext(place,(25,437,970,479),24,lines=1)
+    elif kind==22:  # Acceso general con JPG velado
+        photo((6,125,996,483),soften=.91)
+        bodytext('ACCESO GENERAL' if event['mode']=='libre' else 'ASIENTO NUMERADO',(20,132,975,194),24,lines=1)
+        hline(202,24,975)
+        event_text(18,979,title_y=(210,290),day_y=(296,352),time_y=(355,421),place_y=(422,479),title_sz=50)
+    elif kind==23:  # Ornamental
+        photo((9,130,990,481),soften=.92)
+        draw.rectangle(br(26,143,975,471),outline='black',width=stroke)
+        event_text(40,958,title_y=(160,276),day_y=(288,354),time_y=(351,420),place_y=(422,464),title_sz=51)
+    elif kind==24:  # Diagonal moderna
+        photo((6,125,355,481),soften=.35)
+        draw.polygon([br(355,125,355,125)[:2],br(430,125,430,125)[:2],br(355,480,355,480)[:2]],fill='white')
+        event_text(450,982,title_sz=43)
     hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
