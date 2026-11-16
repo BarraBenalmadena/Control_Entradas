@@ -1,4 +1,4 @@
-# Control de Entradas v1.0 · Piloto para la Escuela Municipal de Música y Danza
+# Control de Entradas v1.1 · Piloto para la Escuela Municipal de Música y Danza
 
 Aplicación independiente en pruebas. No constituye software oficial del Ayuntamiento ni sustituye a un sistema de seguridad homologado.
 
@@ -37,9 +37,20 @@ Primero crea una función de modalidad **numerada** (número de filas y asientos
 
 - Windows: `pip install -r desktop/requirements.txt` y `python desktop/control_entradas.py`.
 - Tests: `pip install opencv-python-headless numpy && python -m unittest discover -s tests -v`.
-- APK: GitHub Actions `Compilar v1.0 Windows y Android` o Gradle `gradle -p android :app:assembleDebug` con JDK17 y SDK35.
+- APK: GitHub Actions `Compilar v1.1 Windows y Android` o Gradle `gradle -p android :app:assembleDebug` con JDK17 y SDK35.
 - EXE: GitHub Actions, PyInstaller `--onefile --windowed --paths desktop --hidden-import=seat_plan --hidden-import=fitz`.
 
 ## 5. Cuidado con la impresora ZYWELL
 
-Los márgenes del diseño **no calibran la cuchilla**. El corte físico sigue dependiendo del modelo, del firmware y del avance real del rollo. Realiza pruebas de dos tickets, primero sin corte, y después con el modo compatible. No atribuir a la v1.0 una corrección física del corte sin confirmarla en tu impresora.
+Los márgenes del diseño **no calibran la cuchilla**. El corte físico sigue dependiendo del modelo, del firmware y del avance real del rollo. Realiza pruebas de dos tickets, primero sin corte, y después con el modo compatible. No atribuir a la v1.1 una corrección física del corte sin confirmarla en tu impresora.
+
+## Novedades v1.1
+
+- Android: lector QR continuo, cámara activa automáticamente tras cargar un evento, área de cámara visible en primer plano. Ajustes plegados por defecto.
+- CameraX analiza imágenes en hilo propio y descarta fotogramas antiguos; ML Kit trabaja solo con QR y su modelo está incorporado.
+- Bloqueo de relecturas del mismo QR hasta retirarlo del objetivo. Pitido y vibración al confirmar o rechazar la entrada.
+- Android permite compartir el mismo archivo JSON firmado ya importado mediante Quick Share, Bluetooth, etc., sin ordenador. No incluye claves privadas.
+- En un único móvil sin red, el rango offline puede quedar vacío. Para varios móviles completamente aislados, usar rangos distintos.
+- En Windows, conexión y PIN plegables y tabla de funciones más alta para pantallas pequeñas.
+
+El coordinador necesita Wi-Fi local/hotspot compartido entre teléfonos; no necesita conectarse a Windows ni a Internet. No se puede impedir el doble uso entre móviles completamente aislados en tiempo real. La rapidez del escáner depende de la cámara, luz y calidad del QR.
