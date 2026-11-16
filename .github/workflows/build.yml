@@ -43,13 +43,11 @@ jobs:
         with:
           path: android/signing/debug.keystore
           key: control-entradas-persistent-debug-signing-v2
-      - name: Preparar firma estable de pruebas
+      - name: Verificar firma original obligatoria
         shell: bash
         run: |
-          mkdir -p android/signing
-          if [ ! -f android/signing/debug.keystore ]; then
-            keytool -genkeypair -v -keystore android/signing/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 20000 -dname "CN=Control Entradas Test, OU=Pruebas, O=Proyecto, C=ES"
-          fi
+          test -s android/signing/debug.keystore || { echo "::error::Falta la clave original. Prohibido regenerarla: cambiaría la firma e impediría actualizar sin desinstalar."; exit 1; }
+          keytool -list -keystore android/signing/debug.keystore -storepass android -alias androiddebugkey >/dev/null
       - name: Instalar SDK Android 35
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
