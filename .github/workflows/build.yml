@@ -1,4 +1,4 @@
-name: Compilar v1.3 Windows y Android
+name: Compilar v1.4 Windows y Android
 on:
   push:
     branches: [main]
@@ -38,6 +38,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - name: Conservar firma de prueba Android entre versiones
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: control-entradas-debug-signing-v1
       - name: Instalar SDK Android 35
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
