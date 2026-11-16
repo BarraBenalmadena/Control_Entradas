@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -447,8 +447,8 @@ def launch_gui():
     import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v1.0")
-    root.geometry("1050x740")
+    root.title("Control de Entradas · v1.1")
+    root.geometry(f"1050x{min(920, max(660, root.winfo_screenheight()-90))}")
     root.minsize(820, 550)
     style = ttk.Style()
     try:
@@ -462,7 +462,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v1.0 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v1.1 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -473,6 +473,18 @@ def launch_gui():
     fingerprint=hashlib.sha256(PUBLIC_KEY_DER).hexdigest().upper()[:16]
     ttk.Label(net_frame, text="Huella firma para JSON offline: " + fingerprint).pack(anchor="w")
     ttk.Label(net_frame, text="Con servidor Windows se usa Wi-Fi local. Para funcionar sin él, exporta un JSON firmado e impórtalo en la APK.").pack(anchor="w")
+
+    net_frame.pack_forget()
+    connection_button = ttk.Button(container, text="Mostrar conexión / PIN / huella de firma", style="Other.TButton")
+    connection_button.pack(fill="x", pady=(0, 4))
+    def toggle_connection():
+        if net_frame.winfo_manager():
+            net_frame.pack_forget()
+            connection_button.configure(text="Mostrar conexión / PIN / huella de firma")
+        else:
+            net_frame.pack(before=form, fill="x")
+            connection_button.configure(text="Ocultar datos de conexión")
+    connection_button.configure(command=toggle_connection)
 
     form = ttk.LabelFrame(container, text="1. Crear y guardar una función", padding=(10, 7))
     form.pack(fill="x", pady=(9, 0))
@@ -522,8 +534,7 @@ def launch_gui():
 
     zywell_btn = ttk.Button(container, text="2 · DISEÑAR / PREVISUALIZAR / IMPRIMIR TICKETS ZYWELL", style="Action.TButton")
     zywell_btn.pack(fill="x", pady=(0, 8))
-    ttk.Label(container,text='Ticket de referencia: logo + imagen del espectáculo + número + QR pequeño. Papel 80/58 mm, corte opcional.',
-              foreground='#225778').pack(anchor='w', pady=(0,6))
+
 
     other_actions=ttk.Frame(container)
     other_actions.pack(fill='x',pady=(0,7))
@@ -537,7 +548,7 @@ def launch_gui():
     list_frame = ttk.LabelFrame(container, text="Funciones guardadas (selecciona una)", padding=9)
     list_frame.pack(fill="both", expand=True)
     cols = ("nombre", "fecha", "tipo", "aforo", "accesos")
-    tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=5, selectmode="browse")
+    tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=9, selectmode="browse")
     for col, label, width in zip(cols, ("Espectáculo", "Fecha y hora", "Modalidad", "Aforo", "Accesos"), (300, 160, 110, 75, 95)):
         tree.heading(col, text=label)
         tree.column(col, width=width, anchor="center" if col in ("aforo", "accesos") else "w")
