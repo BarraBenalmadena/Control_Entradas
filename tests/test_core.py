@@ -314,7 +314,7 @@ class TenDesignsAndMarginTests(unittest.TestCase):
                     self.assertEqual(img.size,(1080,576))
                     assert_qr_not_deformed(self,img,ticket['qr'],80,design)
                     if position=='Según plantilla': images.append(img.tobytes())
-        self.assertEqual(len(set(images)),16,'Las dieciséis plantillas deben ser composiciones distintas')
+        self.assertEqual(len(set(images)),24,'Las veinticuatro plantillas deben ser composiciones distintas')
 
     def test_margins_change_physical_whitespace_and_keep_ticket_length(self):
         e=app.create_event('Ensayo de márgenes','2027-10-24T19:00','libre',1)
