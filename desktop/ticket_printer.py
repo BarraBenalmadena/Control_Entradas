@@ -145,14 +145,14 @@ TEMPLATES = (
     '14 · Programa cultural',
     '15 · Elegancia minimal',
     '16 · Talón municipal',
-    '29 · Clásico centrado',
-    '30 · Danza geométrica',
-    '25 · Concierto elegante',
-    '26 · Teatro dividido',
-    '27 · Cine panorámico',
-    '28 · Acceso general',
-    '23 · Ornamental',
-    '24 · Diagonal moderna',
+    '23 · Clásico tipográfico',
+    '24 · Danza con banda negra',
+    '25 · Concierto con laureles',
+    '26 · Teatro en columnas',
+    '27 · Cine de estreno',
+    '28 · Gala acceso general',
+    '29 · Ornamental clásico',
+    '30 · Diagonal moderna',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -424,51 +424,88 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(label,(25,277,975,357),44,lines=2)
         bodytext(day+'   '+when,(25,361,975,424),40,lines=1,factor=date_factor)
         bodytext(place,(25,427,975,479),23,lines=2)
-    elif kind==16:  # Talón municipal: plano institucional, doble renglón
-        bodytext(label,(25,140,980,245),54,lines=2)
-        hline(255,20,978)
-        bodytext(day,(25,260,565,356),43,lines=1,factor=date_factor)
-        bodytext(when,(580,260,968,356),50,lines=1,factor=date_factor)
-        bodytext(place,(25,368,970,472),33,lines=2)
-    elif kind==17:  # Clásico centrado; JPG como fondo suavizado
-        photo((8,125,993,482),soften=.88)
-        hline(144,35,965)
-        bodytext(label,(40,155,960,283),58,lines=2,min_size=18)
-        bodytext(day+'  ·  '+when,(45,291,955,367),39,lines=1,factor=date_factor)
-        bodytext(place,(50,385,950,472),29,lines=2)
-    elif kind==18:  # JPG diagonal suave con texto en tarjeta
-        photo((5,126,995,481),soften=.43)
-        draw.rectangle(br(420,140,986,475),fill='white',outline='black',width=stroke)
-        event_text(441,970,title_sz=39)
-    elif kind==19:  # Cartel grande y datos a la derecha
-        photo((8,127,620,480),frame=bool(poster))
-        draw.line((br(626,130,626,480)[0],y(130),br(626,130,626,480)[0],y(480)),fill='black',width=stroke)
-        event_text(642,987,title_sz=36)
-    elif kind==20:  # Teatro por columnas
-        bodytext(day,(18,155,365,240),37,lines=1,factor=date_factor)
-        bodytext(when,(18,255,365,338),49,lines=1,factor=date_factor)
-        bodytext(place,(18,352,365,475),24,lines=3)
-        draw.line((br(379,138,379,480)[0],y(138),br(379,138,379,480)[0],y(480)),fill='black',width=stroke)
-        photo((395,135,986,480),soften=.72)
-        bodytext(label,(414,185,971,405),51,lines=3,min_size=17)
-    elif kind==21:  # Cine: JPG en franja central
-        bodytext(label,(20,129,985,241),60,lines=2,min_size=18)
-        photo((18,245,980,378),frame=bool(poster))
-        bodytext(f'{day}     {when}',(25,382,970,435),38,lines=1,factor=date_factor)
-        bodytext(place,(25,437,970,479),24,lines=1)
-    elif kind==22:  # Acceso general con JPG velado
-        photo((6,125,996,483),soften=.91)
-        bodytext('ACCESO GENERAL' if event['mode']=='libre' else 'ASIENTO NUMERADO',(20,132,975,194),24,lines=1)
-        hline(202,24,975)
-        event_text(18,979,title_y=(210,290),day_y=(296,352),time_y=(355,421),place_y=(422,479),title_sz=50)
-    elif kind==23:  # Ornamental
-        photo((9,130,990,481),soften=.92)
-        draw.rectangle(br(26,143,975,471),outline='black',width=stroke)
-        event_text(40,958,title_y=(160,276),day_y=(288,354),time_y=(351,420),place_y=(422,464),title_sz=51)
-    elif kind==24:  # Diagonal moderna
-        photo((6,125,355,481),soften=.35)
-        draw.polygon([br(355,125,355,125)[:2],br(430,125,430,125)[:2],br(355,480,355,480)[:2]],fill='white')
-        event_text(450,982,title_sz=43)
+    elif kind==16:  # 23: Clásico tipográfico
+        photo((10,135,987,472),soften=.94)
+        hline(148,45,955)
+        bodytext(label,(30,170,970,298),64,lines=2,min_size=18)
+        hline(301,70,930)
+        bodytext(day+'   |   '+when,(32,317,970,388),38,lines=1,factor=date_factor)
+        bodytext(place,(45,400,956,474),27,lines=2)
+    elif kind==17:  # 24: Danza, cabecera negra y composición en dos columnas
+        draw.rectangle(br(5,125,995,173),fill='black')
+        bodytext('DANZA', (35,127,965,172),32,color='white',lines=1)
+        photo((8,179,438,475),soften=.44)
+        if poster is None:
+            # Movimiento de bailarinas representado mediante curvas y círculos
+            for cx in (155,299):
+                xx,yy=br(cx,236,cx,236)[:2]
+                rr=sz(18)
+                draw.ellipse((xx-rr,yy-rr,xx+rr,yy+rr),fill='black')
+                draw.line((xx,yy+rr,xx-sz(18),y(371)),fill='black',width=sz(10))
+                draw.line((xx-sz(18),y(371),xx-sz(80),y(436)),fill='black',width=sz(8))
+                draw.line((xx-sz(18),y(371),xx+sz(60),y(418)),fill='black',width=sz(8))
+                draw.line((xx,y(287),xx+sz(79),y(237)),fill='black',width=sz(6))
+        draw.line((br(447,181,447,471)[0],y(181),br(447,181,447,471)[0],y(471)),fill='black',width=stroke)
+        event_text(460,979,title_y=(184,290),day_y=(298,356),time_y=(355,416),place_y=(413,472),title_sz=49)
+    elif kind==18:  # 25: Concierto con marco y laureles
+        photo((10,130,991,481),soften=.95)
+        draw.rectangle(br(18,135,980,479),outline='black',width=stroke)
+        for side in (80,915):
+            for i in range(5):
+                x0,y0,x1,y1=br(side,188+i*43,side+20,213+i*43)
+                draw.ellipse((x0,y0,x1,y1),outline='black',width=sz(3))
+        bodytext(label,(122,170,875,292),61,lines=2,min_size=19)
+        hline(309,126,880)
+        bodytext(day+'  ·  '+when,(125,317,877,385),36,lines=1,factor=date_factor)
+        bodytext(place,(130,400,865,466),26,lines=2)
+    elif kind==19:  # 26: Teatro partido por línea oblicua
+        photo((8,130,991,480),soften=.95)
+        for y0 in (150,253,356):
+            hline(y0,15,395)
+        bodytext(day,(20,164,370,238),37,lines=1,factor=date_factor)
+        bodytext(when,(20,268,370,344),49,lines=1,factor=date_factor)
+        bodytext(place,(20,371,380,470),25,lines=3)
+        draw.line((br(430,130,430,130)[0],y(130),br(389,480,389,480)[0],y(480)),fill='black',width=sz(7))
+        bodytext(label,(455,175,962,315),60,lines=2,min_size=17)
+        bodytext('TEATRO', (465,333,950,422),35,lines=1)
+        # Dos máscaras circulares, alusivas al escenario
+        for x0 in (700,786):
+            box=br(x0,419,x0+54,477);draw.ellipse(box,outline='black',width=stroke)
+    elif kind==20:  # 27: Cine, cartel luminoso y cámara
+        photo((8,126,990,479),soften=.92)
+        for px in (196,259,322,385,448,511,574,637,700,763):
+            a=br(px,153,px+12,168);draw.ellipse(a,fill='black')
+        draw.rectangle(br(135,174,845,316),outline='black',width=sz(6))
+        bodytext(label,(156,182,823,302),57,lines=2,min_size=17)
+        bodytext(day+'  ·  '+when,(105,339,895,402),37,lines=1,factor=date_factor)
+        bodytext(place,(105,414,895,471),26,lines=2)
+    elif kind==21:  # 28: Gala con placa acceso general
+        photo((5,126,995,479),soften=.94)
+        draw.rectangle(br(17,166,308,364),fill='black')
+        bodytext('ACCESO GENERAL' if event['mode']=='libre' else 'BUTACA NUMERADA',(25,188,301,343),32,lines=3,color='white')
+        draw.line((br(326,132,326,468)[0],y(132),br(326,132,326,468)[0],y(468)),fill='black',width=stroke)
+        event_text(351,978,title_y=(137,287),day_y=(296,356),time_y=(352,410),place_y=(412,475),title_sz=54)
+    elif kind==22:  # 29: Ornamental, esquinas y volutas
+        photo((9,132,992,479),soften=.95)
+        draw.rectangle(br(22,141,979,471),outline='black',width=sz(3))
+        for cx in (33,960):
+            for yy in (152,448):
+                x0,y0,x1,y1=br(cx,yy,cx+24,yy+24)
+                draw.arc((x0,y0,x1,y1),0,290,fill='black',width=sz(3))
+        bodytext(label,(71,177,930,287),60,lines=2,min_size=19)
+        hline(301,130,868)
+        bodytext(day+'  ·  '+when,(93,312,911,387),38,lines=1,factor=date_factor)
+        bodytext(place,(100,397,900,465),28,lines=2)
+    elif kind==23:  # 30: Diagonal moderna, sin tapar textos ni QR
+        photo((7,126,990,478),soften=.92)
+        a=br(8,128,8,128)[:2]; b=br(405,128,405,128)[:2]
+        c=br(259,475,259,475)[:2]; d=br(8,475,8,475)[:2]
+        draw.polygon([a,b,c,d],fill='black')
+        bodytext('ENTRADA',(27,147,344,206),31,color='white',lines=1)
+        bodytext('CULTURAL',(28,218,325,278),29,color='white',lines=1)
+        for i in range(3):
+            draw.line((br(45+i*43,411,45+i*43,411)[0],y(411),br(190+i*43,467,190+i*43,467)[0],y(467)),fill='white',width=sz(8))
+        event_text(430,980,title_sz=47)
     hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
