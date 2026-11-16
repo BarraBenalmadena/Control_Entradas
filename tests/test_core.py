@@ -302,7 +302,7 @@ class TenDesignsAndMarginTests(unittest.TestCase):
         e=app.create_event('Gala de Danza de la Escuela Municipal','2027-12-20T19:00','libre',1)
         event,ticket=app.get_ticket(e,1)
         images=[]
-        self.assertEqual(len(ticket_printer.TEMPLATES),16)
+        self.assertEqual(len(ticket_printer.TEMPLATES),24)
         for template in ticket_printer.TEMPLATES:
             for position in ticket_printer.LOGO_POSITIONS:
                 with self.subTest(template=template,logos=position):
