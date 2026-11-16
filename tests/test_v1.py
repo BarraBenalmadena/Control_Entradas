@@ -16,6 +16,7 @@ class V1Tests(unittest.TestCase):
         eid=app.create_event('Concierto offline','2027-03-01T20:00','libre',4)
         with tempfile.TemporaryDirectory() as folder:
             target=Path(folder)/'funcion.json'
+            app.record_print_submission(eid,range(1,5))
             self.assertEqual(app.export_offline_event(eid,target),4)
             package=json.loads(target.read_text('utf-8'))
             self.assertNotIn('PRIVATE',target.read_text('utf-8'))
@@ -44,6 +45,7 @@ class V1Tests(unittest.TestCase):
             self.assertEqual(stored,str(imported))
             seat_plan.toggle_reserved(app.DB_PATH,key)
             target=Path(folder)/'evento.json'
+            app.record_print_submission(eid,[1])
             app.export_offline_event(eid,target)
             item=app.verify_offline_file(target)['tickets'][0]
             self.assertTrue(item['reserved'])
