@@ -100,6 +100,11 @@ def init_db():
                 UNIQUE(event_id, number)
             );
             CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id);
+            CREATE TABLE IF NOT EXISTS ticket_print_log (
+                ticket_id TEXT PRIMARY KEY,
+                submitted_at TEXT NOT NULL,
+                FOREIGN KEY(ticket_id) REFERENCES tickets(id)
+            );
             CREATE TABLE IF NOT EXISTS ticket_design (
                 event_id TEXT PRIMARY KEY REFERENCES events(id),
                 data TEXT NOT NULL
@@ -154,6 +159,16 @@ def list_events():
         return [dict(x) for x in rows]
 
 
+def record_print_submission(event_id: str, numbers):
+    """Registra entradas enviadas a la cola de la impresora (no confirma salida física)."""
+    with connect() as db:
+        for number in numbers:
+            row=db.execute('SELECT id FROM tickets WHERE event_id=? AND number=?',(event_id,int(number))).fetchone()
+            if row:
+                db.execute('INSERT OR REPLACE INTO ticket_print_log(ticket_id,submitted_at) VALUES (?,?)',
+                           (row['id'],iso_now()))
+
+
 def export_offline_event(event_id: str, target: Path):
     """Signed offline snapshot. Private key never leaves Windows.
 
@@ -163,10 +178,11 @@ def export_offline_event(event_id: str, target: Path):
     with connect() as db:
         event=db.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if event is None:raise ValueError('La función no existe.')
-        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id WHERE t.event_id=? ORDER BY t.number",(event_id,)).fetchall()
+        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? ORDER BY t.number",(event_id,)).fetchall()
     data={'version':1,'created_at':iso_now(),'event':dict(event),
           'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
-                      'used':bool(t['used_at']),'reserved':bool(t['reserved'])} for t in tickets]}
+                      'used':bool(t['used_at']),'reserved':bool(t['reserved']),
+                      'submitted_to_printer':bool(t['printed_at'])} for t in tickets]}
     data64=b64u(json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
     signature=PRIVATE_KEY.sign(data64.encode('ascii'),ec.ECDSA(hashes.SHA256()))
     package={'format':'CE-OFFLINE-1','public_key':base64.b64encode(PUBLIC_KEY_DER).decode('ascii'),
@@ -1070,6 +1086,7 @@ def launch_gui():
             def worker():
                 try:
                     job=ticket_printer.print_windows_escpos_batch(pairs,selected,w,d,c,full_cut=fc,feed_dots=advance,cut_mode=mode,length_mm=mm)
+                    record_print_submission(event_id,numbers)
                     def success():
                         if not win.winfo_exists():return
                         print_button.configure(state='normal')
