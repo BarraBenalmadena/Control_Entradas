@@ -81,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_ALARM, 95);
     private TextToSpeech voice;
     private boolean voiceReady = false;
+    private boolean ttsEnabled = true;
     private boolean continuousEnabled = true;
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
@@ -115,6 +116,7 @@ public class MainActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        ttsEnabled = prefs.getBoolean("tts_enabled",true);
         voice = new TextToSpeech(this, status -> {
             if(status == TextToSpeech.SUCCESS && voice != null){
                 int result = voice.setLanguage(new Locale("es", "ES"));
@@ -252,6 +254,15 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(exportAccess);
         exportAccess.setOnClickListener(v->auditExporter.launch("Accesos_"+offline.eventId()+".json"));
         offlineStatus=text("No hay JSON offline importado",12,true);layout.addView(offlineStatus);
+        CheckBox voiceToggle=new CheckBox(this);
+        voiceToggle.setText("Avisos hablados TTS");
+        voiceToggle.setChecked(ttsEnabled);
+        voiceToggle.setOnCheckedChangeListener((v,enabled)->{
+            ttsEnabled=enabled;
+            prefs.edit().putBoolean("tts_enabled",enabled).apply();
+            if(!enabled && voice!=null) voice.stop();
+        });
+        layout.addView(voiceToggle);
         ticketListButton=button("VER ENTRADAS DEL JSON Y ESTADO DE ACCESO");
         ticketListButton.setOnClickListener(v->showTicketList());
         layout.addView(ticketListButton);
@@ -344,7 +355,7 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
         fastPanel.setBackgroundColor(Color.WHITE);
         View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
-                offlineStatus,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,queueView};
+                offlineStatus,voiceToggle,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,queueView};
         for(View view:quick) layout.removeView(view);
         LinearLayout settingsPanel=new LinearLayout(this);
         settingsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -440,7 +451,7 @@ public class MainActivity extends AppCompatActivity {
         return text.length() > 110 ? text.substring(0,110) : text;
     }
     private void say(String message) {
-        if(voiceReady && voice != null) voice.speak(message, TextToSpeech.QUEUE_FLUSH, null, "qr_result");
+        if(ttsEnabled && voiceReady && voice != null) voice.speak(message, TextToSpeech.QUEUE_FLUSH, null, "qr_result");
     }
     private void detectedBeep() {
         try { feedbackTone.startTone(ToneGenerator.TONE_PROP_BEEP, 220); } catch(Exception ignored) {}
@@ -546,7 +557,10 @@ public class MainActivity extends AppCompatActivity {
     }
     private void showResult(String message, int color) {
         statusView.setText(message);
-        statusView.setTextColor(color == Color.RED ? Color.rgb(171,32,32) : color == Color.rgb(20,122,71) ? Color.rgb(20,122,71) : Color.rgb(130,82,0));
+        boolean ok = color == Color.rgb(20,122,71);
+        boolean denied = color == Color.RED;
+        statusView.setBackgroundColor(ok?Color.rgb(216,246,222):denied?Color.rgb(255,224,224):Color.rgb(255,245,214));
+        statusView.setTextColor(ok?Color.rgb(15,105,51):denied?Color.rgb(171,32,32):Color.rgb(120,75,0));
     }
     private String baseUrl() { return serverInput.getText().toString().trim().replaceAll("/+$", ""); }
     private String pin() { return pinInput.getText().toString().trim(); }
@@ -622,7 +636,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1920,1080))
+                    .setTargetResolution(new Size(1280,720))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -639,7 +653,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
-                                if(now-lastQrVisibleMs>550)blockedQr="";
+                                if(now-lastQrVisibleMs>380)blockedQr="";
                                 return;
                             }
                             boolean same=candidate.equals(blockedQr);
@@ -715,7 +729,7 @@ public class MainActivity extends AppCompatActivity {
                     (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
                 String finished=message;
                 boolean accepted="valid".equals(status);
-                runOnUiThread(()->{showResult((accepted?"ACCESO PERMITIDO\n":"ACCESO DENEGADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada válida. Acceso permitido.":"Acceso denegado. "+messageForVoice(finished));updateOfflineCounter();});
+                runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();});
             }catch(Exception ex){
                 runOnUiThread(()->{showResult("ACCESO NO VALIDADO\n"+ex.getMessage(),Color.RED);scanFeedback(false);say("Acceso no validado. Compruebe la conexión o el código.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
