@@ -387,7 +387,9 @@ public class MainActivity extends AppCompatActivity {
             if(scanned)used++;
             info.append(String.format(java.util.Locale.US,"%04d",t.optInt("number")));
             if(!t.optString("seat").isEmpty())info.append(" · ").append(t.optString("seat"));
-            info.append(scanned?" · UTILIZADA":" · PENDIENTE").append("\\n");
+            info.append(scanned?" · UTILIZADA":" · PENDIENTE");
+            if(t.optBoolean("print_known"))info.append(t.optBoolean("printed")?" · ENVIADA A IMPRESORA":" · SIN ENVÍO REGISTRADO");
+            info.append("\n");
         }
         final int completed=used;
         new AlertDialog.Builder(this)
