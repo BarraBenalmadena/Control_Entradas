@@ -1,4 +1,4 @@
-# Control de Entradas v1.1 · Piloto para la Escuela Municipal de Música y Danza
+# Control de Entradas v1.2 · Piloto para la Escuela Municipal de Música y Danza
 
 Aplicación independiente en pruebas. No constituye software oficial del Ayuntamiento ni sustituye a un sistema de seguridad homologado.
 
@@ -37,20 +37,27 @@ Primero crea una función de modalidad **numerada** (número de filas y asientos
 
 - Windows: `pip install -r desktop/requirements.txt` y `python desktop/control_entradas.py`.
 - Tests: `pip install opencv-python-headless numpy && python -m unittest discover -s tests -v`.
-- APK: GitHub Actions `Compilar v1.1 Windows y Android` o Gradle `gradle -p android :app:assembleDebug` con JDK17 y SDK35.
+- APK: GitHub Actions `Compilar v1.2 Windows y Android` o Gradle `gradle -p android :app:assembleDebug` con JDK17 y SDK35.
 - EXE: GitHub Actions, PyInstaller `--onefile --windowed --paths desktop --hidden-import=seat_plan --hidden-import=fitz`.
 
 ## 5. Cuidado con la impresora ZYWELL
 
-Los márgenes del diseño **no calibran la cuchilla**. El corte físico sigue dependiendo del modelo, del firmware y del avance real del rollo. Realiza pruebas de dos tickets, primero sin corte, y después con el modo compatible. No atribuir a la v1.1 una corrección física del corte sin confirmarla en tu impresora.
+Los márgenes del diseño **no calibran la cuchilla**. El corte físico sigue dependiendo del modelo, del firmware y del avance real del rollo. Realiza pruebas de dos tickets, primero sin corte, y después con el modo compatible. No atribuir a la v1.2 una corrección física del corte sin confirmarla en tu impresora.
 
-## Novedades v1.1
+## Novedades v1.2 - Acceso rápido
 
-- Android: lector QR continuo, cámara activa automáticamente tras cargar un evento, área de cámara visible en primer plano. Ajustes plegados por defecto.
-- CameraX analiza imágenes en hilo propio y descarta fotogramas antiguos; ML Kit trabaja solo con QR y su modelo está incorporado.
-- Bloqueo de relecturas del mismo QR hasta retirarlo del objetivo. Pitido y vibración al confirmar o rechazar la entrada.
-- Android permite compartir el mismo archivo JSON firmado ya importado mediante Quick Share, Bluetooth, etc., sin ordenador. No incluye claves privadas.
-- En un único móvil sin red, el rango offline puede quedar vacío. Para varios móviles completamente aislados, usar rangos distintos.
-- En Windows, conexión y PIN plegables y tabla de funciones más alta para pantallas pequeñas.
+- Android: cámara activa automáticamente al cargar un evento, con lector QR continuo. Panel principal de escaneo visible; ajustes de red en sección plegable.
+- Lectura QR en hilo de análisis dedicado CameraX, salto de fotogramas antiguos, solo QR con ML Kit incluido en la APK. No hace falta pulsar Escanear por cada entrada.
+- Bloqueo de lecturas repetidas de un código mientras permanece delante de la cámara. Para reintentar el mismo QR, retíralo y vuelve a presentarlo.
+- Vibración y pitido diferentes tras validación aceptada o rechazada. Pantalla encendida mientras la cámara está activa; botón para pausar.
+- Con el JSON firmado ya importado: permite compartirlo desde Android mediante el menú de compartir del sistema; no contiene la clave privada.
+- JSON offline: con un único móvil se puede dejar el rango vacío; con varios móviles aislados, configurar rangos no solapados.
+- Windows: la tabla de funciones se expande y los datos de conexión/PIN se ocultan bajo un botón para liberar altura en pantallas pequeñas.
 
-El coordinador necesita Wi-Fi local/hotspot compartido entre teléfonos; no necesita conectarse a Windows ni a Internet. No se puede impedir el doble uso entre móviles completamente aislados en tiempo real. La rapidez del escáner depende de la cámara, luz y calidad del QR.
+**Advertencia:** para impedir el doble uso entre varios lectores al mismo tiempo, todos deben conectar con el mismo móvil coordinador usando una red Wi-Fi/hotspot. Los teléfonos completamente aislados no pueden mantener un estado de uso compartido en tiempo real. La velocidad depende de cámara, luz, densidad del QR y red.
+
+## Mejoras v1.2
+- Lector continuo a 1080p, zoom ajustable con valor inicial de 1,8×.
+- Los fallos internos de ML Kit se muestran en pantalla cuando suceden.
+- QR imprimibles más legibles (módulos más grandes, sin interpolación).
+- Conserva los QR CE1 y el JSON firmado de versiones anteriores; si el impreso original es muy pequeño, puede requerir reimpresión para mejorar la lectura.

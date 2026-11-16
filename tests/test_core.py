@@ -16,13 +16,13 @@ import ticket_printer
 def assert_qr_not_deformed(testcase, img, raw_qr, paper_mm, design=None):
     """Comprueba el QR sin interpolación en la nueva geometría de impresión."""
     import numpy as np
-    qr=ticket_printer._qr_image(raw_qr)
     g=ticket_printer.geometry(paper_mm,img.width//8,design)
     s=img.height/576.0
     left=g['divider']+round(8*s)
     right=img.width-g['right_limit']-round(4*s)
+    y=g['T']+round(182*g['sx'])
+    qr=ticket_printer._qr_image(raw_qr,right-left-round(4*s),g['T']+round(424*g['sx'])-y)
     x=(left+right-qr.width)//2
-    y=g['T']+round(207*g['sx'])
     cropped=np.asarray(img)[y:y+qr.height,x:x+qr.width]
     testcase.assertTrue(np.array_equal(cropped,np.asarray(qr)),'El QR ha sido deformado')
 
@@ -171,15 +171,15 @@ class CalibrationTests(unittest.TestCase):
                     self.assertEqual(img.size,(length*8,ticket_printer.PRINTABLE_DOTS[paper]))
                     # El QR tiene siempre píxeles nativos (sin interpolación),
                     # pero el talón cambia su origen cuando cambia la longitud.
-                    qr_image=ticket_printer._qr_image(ticket['qr'])
                     scale=img.height / 576
                     px=lambda x:round(x*scale)
                     g=ticket_printer.geometry(paper,length,{})
                     divider=g['divider']
                     stub_left=divider+px(8)
                     stub_right=img.width-g['right_limit']-px(4)
+                    y=g['T']+round(182*g['sx'])
+                    qr_image=ticket_printer._qr_image(ticket['qr'],stub_right-stub_left-px(4),g['T']+round(424*g['sx'])-y)
                     x=(stub_left+stub_right-qr_image.width)//2
-                    y=g['T']+round(207*g['sx'])
                     roi=np.asarray(img)[y-3:y+qr_image.height+3,
                                        x-3:x+qr_image.width+3]
                     gray=cv2.cvtColor(roi,cv2.COLOR_RGB2GRAY)
@@ -346,3 +346,17 @@ class TenDesignsAndMarginTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestQrThermalReadability(unittest.TestCase):
+    def test_80mm_qr_uses_at_least_three_printer_dots_per_module(self):
+        e=app.create_event("Lectura QR tamaño mejorado", "2027-05-01T20:00", "libre", 1)
+        ev,t=app.get_ticket(e,1)
+        import qrcode
+        q=qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,box_size=1,border=4)
+        q.add_data(t['qr']);q.make(fit=True)
+        im=ticket_printer.render_landscape_ticket(ev,t,80,{},length_mm=135)
+        g=ticket_printer.geometry(80,135,{})
+        cell=(g['stub']-12)//(q.modules_count+8)
+        self.assertGreaterEqual(cell,3)
+        assert_qr_not_deformed(self,im,t['qr'],80)

@@ -108,13 +108,24 @@ def _dash_line(draw, bbox, width=3, dash=11):
         draw.line((x1,y,x1,min(y+dash,y1)),fill='black',width=width)
 
 
-def _qr_image(value: str) -> Image.Image:
-    """2 puntos por modulo minimo para que el QR compacto conserve detalle."""
-    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=2, border=4)
+def _qr_image(value: str, max_width: int = 240, max_height: int = 240) -> Image.Image:
+    """Priorizar módulos de 3/4 puntos cuando el formato físico lo permita.
+
+    La firma ECDSA de los códigos CE1 obliga a codificar muchos módulos. Con
+    dos puntos a 203 ppp el módulo mide apenas 0,25 mm, ilegible en térmica
+    cuando el lector se separa un poco. Nunca se interpola un QR renderizado.
+    """
+    if max_width < 60 or max_height < 60:
+        raise ValueError('Área demasiado pequeña para imprimir un QR legible.')
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=1, border=4)
     qr.add_data(value)
     qr.make(fit=True)
-    image = qr.make_image(fill_color='black',back_color='white').convert('RGB')
-    return image
+    cells = qr.modules_count + 8  # cuatro módulos blancos en cada lado
+    box = min(4, max_width // cells, max_height // cells)
+    if box < 2:
+        raise ValueError('El QR no cabe: aumenta la longitud del ticket o utiliza papel de 80 mm.')
+    qr.box_size = box
+    return qr.make_image(fill_color='black',back_color='white').convert('RGB')
 
 
 TEMPLATES = (
@@ -206,7 +217,7 @@ def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -
     if H-T-B<205:
         raise ValueError('Márgenes superior e inferior demasiado grandes para el QR.')
     sx = (H-T-B)/576
-    stub = round(224 * H/576)
+    stub = round(260 * H/576)  # v1.2: más anchura reservada para QR ópticamente legible
     divider = W-right_limit-stub
     R = divider-round(8*H/576)
     usable = R-L
@@ -421,22 +432,21 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
 
     # Talón del QR inalterado; nunca interpolar el código.
     stub_left, stub_right = divider+xu(8), W-g['right_limit']-xu(4)
-    _dash_line(ImageDraw.Draw(im),(stub_left,y(125),stub_right,y(201)),width=stroke,dash=max(4,xu(10)))
+    _dash_line(ImageDraw.Draw(im),(stub_left,y(120),stub_right,y(172)),width=stroke,dash=max(4,xu(10)))
     text_box(f"N.º {int(ticket['number']):04d}",
-             (stub_left+2,y(130),stub_right-2,y(190)),30,lines=1,min_size=12)
-    qr=_qr_image(ticket['qr'])
-    if qr.width > stub_right-stub_left-xu(2):
-        raise ValueError('QR demasiado ancho. Prueba un rollo de 80 mm.')
+             (stub_left+2,y(124),stub_right-2,y(168)),30,lines=1,min_size=12)
+    # Priorizar módulos grandes incluso en papel térmico. Calcular el límite
+    # teniendo en cuenta la caja real: nunca redimensionar una matriz QR.
+    qy=y(182)
+    qr_limit=y(424)-qy
+    qr=_qr_image(ticket['qr'],stub_right-stub_left-xu(4),qr_limit)
     qx=(stub_left+stub_right-qr.width)//2
-    qy=y(207)
-    if qy+qr.height>y(452):
-        raise ValueError('El QR no cabe con estos márgenes verticales; redúcelos.')
     im.paste(qr,(qx,qy))
-    caption_y=qy+qr.height+sz(6)
-    text_box('ESCANEAR QR',(stub_left,caption_y,stub_right,caption_y+sz(26)),17,lines=1,min_size=9)
-    caption_y+=sz(27)
+    caption_y=qy+qr.height+sz(4)
+    text_box('ESCANEAR QR',(stub_left,caption_y,stub_right,caption_y+sz(21)),17,lines=1,min_size=9)
+    caption_y+=sz(22)
     text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
-             (stub_left,caption_y,stub_right,caption_y+sz(43)),16,lines=2,min_size=9)
+             (stub_left,caption_y,stub_right,caption_y+sz(29)),16,lines=2,min_size=9)
     text_box('1 PERSONA',(stub_left,y(468),stub_right,y(525)),29,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(534),stub_right,y(562)),15,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')

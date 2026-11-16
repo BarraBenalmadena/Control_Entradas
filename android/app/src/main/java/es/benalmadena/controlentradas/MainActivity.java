@@ -81,6 +81,9 @@ public class MainActivity extends AppCompatActivity {
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
     private androidx.camera.core.Camera activeCamera;
+    private float zoomRatio = 1.8f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
+    private TextView zoomLabel;
+    private long lastScannerErrorMs = 0L;
 
     private EditText serverInput, pinInput;
     private TextView statusView, connectionView, counterView, queueView;
@@ -192,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(layout);
         setContentView(scroll);
         layout.addView(text("CONTROL DE ENTRADAS", 23, true));
-        layout.addView(text("Escuela Municipal de Música y Danza · v1.1 · escaneo continuo", 12, false));
+        layout.addView(text("Escuela Municipal de Música y Danza · v1.2 · lector QR mejorado", 12, false));
         connectionView = text("Sin conexión · Vincula este móvil al servidor Windows", 13, true);
         layout.addView(connectionView);
         serverInput = new EditText(this);
@@ -276,7 +279,19 @@ public class MainActivity extends AppCompatActivity {
         });
         cameraView = new PreviewView(this);
         cameraView.setVisibility(View.GONE);
-        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(290)));
+        layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(325)));
+        LinearLayout zoomRow = new LinearLayout(this);
+        zoomRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button lessZoom = button("– ZOOM");
+        Button moreZoom = button("+ ZOOM");
+        zoomLabel = text("ZOOM 1.8×", 13, true);
+        zoomLabel.setGravity(Gravity.CENTER);
+        zoomRow.addView(lessZoom,new LinearLayout.LayoutParams(0,dp(46),1));
+        zoomRow.addView(zoomLabel,new LinearLayout.LayoutParams(0,dp(46),1));
+        zoomRow.addView(moreZoom,new LinearLayout.LayoutParams(0,dp(46),1));
+        layout.addView(zoomRow);
+        lessZoom.setOnClickListener(v -> { zoomRatio = Math.max(1.0f,zoomRatio-0.4f); applyCameraZoom(); });
+        moreZoom.setOnClickListener(v -> { zoomRatio = Math.min(4.0f,zoomRatio+0.4f); applyCameraZoom(); });
         statusView = text("Listo para conectar", 21, true);
         statusView.setGravity(Gravity.CENTER);
         statusView.setPadding(dp(12), dp(18), dp(12), dp(18));
@@ -312,7 +327,7 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
         fastPanel.setBackgroundColor(Color.WHITE);
         View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
-                offlineStatus,cameraView,camera,statusView,counterView,queueView};
+                offlineStatus,cameraView,zoomRow,camera,statusView,counterView,queueView};
         for(View view:quick) layout.removeView(view);
         LinearLayout settingsPanel=new LinearLayout(this);
         settingsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -515,6 +530,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+    private void applyCameraZoom(){
+        if (activeCamera != null) {
+            androidx.camera.core.ZoomState state = activeCamera.getCameraInfo().getZoomState().getValue();
+            float min = state == null ? 1.0f : state.getMinZoomRatio();
+            float max = state == null ? 1.0f : state.getMaxZoomRatio();
+            zoomRatio = Math.max(min,Math.min(max,zoomRatio));
+            activeCamera.getCameraControl().setZoomRatio(zoomRatio);
+        }
+        if(zoomLabel!=null) zoomLabel.setText(String.format(java.util.Locale.US,"ZOOM %.1f×",zoomRatio));
+    }
     @androidx.camera.core.ExperimentalGetImage
     private void startScanner() {
         if(!continuousEnabled || eventIds.isEmpty() || scannerStarted)return;
@@ -529,7 +554,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1280,720))
+                    .setTargetResolution(new Size(1920,1080))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -557,11 +582,19 @@ public class MainActivity extends AppCompatActivity {
                                 processQr(candidate);
                             }
                         })
+                        .addOnFailureListener(error -> {
+                            long now=SystemClock.elapsedRealtime();
+                            if(now-lastScannerErrorMs>3000){
+                                lastScannerErrorMs=now;
+                                runOnUiThread(()->showResult("ERROR DEL LECTOR QR: "+error.getMessage(),Color.RED));
+                            }
+                        })
                         .addOnCompleteListener(task->{frameBusy.set(false);image.close();});
                 });
                 cameraProvider.unbindAll();
                 activeCamera=cameraProvider.bindToLifecycle(this,CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis);
-                showResult("CÁMARA ACTIVA · APUNTA A LA SIGUIENTE ENTRADA",Color.rgb(20,122,71));
+                applyCameraZoom();
+                showResult("CÁMARA ACTIVA · ENFOCA EL QR EN EL CENTRO",Color.rgb(20,122,71));
             }catch(Exception e){scannerStarted=false;showResult("ERROR DE CÁMARA: "+e.getMessage(),Color.RED);}
         },ContextCompat.getMainExecutor(this));
     }
