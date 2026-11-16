@@ -1,4 +1,4 @@
-name: Compilar v1.2 Windows y Android
+name: Compilar v1.3 Windows y Android
 on:
   push:
     branches: [main]
@@ -19,11 +19,11 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m unittest discover -s tests -v
       - name: Compilar aplicación con módulos de plano y exportación
-        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --name ControlEntradas_Windows_v1.2 desktop/control_entradas.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --name ControlEntradas_Windows desktop/control_entradas.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_Windows_v1.2
-          path: dist/ControlEntradas_Windows_v1.2.exe
+          name: ControlEntradas_Windows
+          path: dist/ControlEntradas_Windows.exe
           if-no-files-found: error
           retention-days: 30
   android:
@@ -43,9 +43,11 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Compilar APK debug
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+      - name: Generar APK y AAB de prueba
+        run: gradle -p android :app:bundleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_Android_v1.2_debug
+          name: ControlEntradas_Android
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
