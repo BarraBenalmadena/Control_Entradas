@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private String blockedQr = "";
     private long lastQrVisibleMs = 0L;
     private androidx.camera.core.Camera activeCamera;
-    private float zoomRatio = 1.8f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
+    private float zoomRatio = 1.0f; // Zoom óptico/digital asistido para QR térmicos de alta densidad
     private TextView zoomLabel;
     private long lastScannerErrorMs = 0L;
 
@@ -195,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(layout);
         setContentView(scroll);
         layout.addView(text("CONTROL DE ENTRADAS", 23, true));
-        layout.addView(text("Escuela Municipal de Música y Danza · v1.2 · lector QR mejorado", 12, false));
+        layout.addView(text("Escuela Municipal de Música y Danza · v1.3 · diagnóstico QR", 12, false));
         connectionView = text("Sin conexión · Vincula este móvil al servidor Windows", 13, true);
         layout.addView(connectionView);
         serverInput = new EditText(this);
@@ -284,7 +284,7 @@ public class MainActivity extends AppCompatActivity {
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         Button lessZoom = button("– ZOOM");
         Button moreZoom = button("+ ZOOM");
-        zoomLabel = text("ZOOM 1.8×", 13, true);
+        zoomLabel = text("ZOOM 1.0×", 13, true);
         zoomLabel.setGravity(Gravity.CENTER);
         zoomRow.addView(lessZoom,new LinearLayout.LayoutParams(0,dp(46),1));
         zoomRow.addView(zoomLabel,new LinearLayout.LayoutParams(0,dp(46),1));
@@ -554,7 +554,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1920,1080))
+                    .setTargetResolution(new Size(1280,720))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -567,7 +567,7 @@ public class MainActivity extends AppCompatActivity {
                             String candidate=null;
                             for(Barcode barcode:barcodes){
                                 String value=barcode.getRawValue();
-                                if(value!=null && value.startsWith("CE1.")){candidate=value;break;}
+                                if(value!=null && !value.trim().isEmpty()){candidate=value.trim();break;}
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
@@ -577,6 +577,12 @@ public class MainActivity extends AppCompatActivity {
                             boolean same=candidate.equals(blockedQr);
                             lastQrVisibleMs=now;
                             if(same || analyzing.get())return;
+                            if(!candidate.startsWith("CE1.")){
+                                blockedQr=candidate;
+                                showResult("QR DETECTADO, PERO NO ES UNA ENTRADA CE1 DE ESTE SISTEMA",Color.RED);
+                                scanFeedback(false);
+                                return;
+                            }
                             if(analyzing.compareAndSet(false,true)){
                                 blockedQr=candidate;
                                 processQr(candidate);
