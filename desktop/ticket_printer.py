@@ -349,9 +349,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         if src is not None:
             # Never let a logo invade the decorative frame (or overlap the cut zone).
             a=max(15,min(985,a));c=max(a+1,min(985,c))
-            b=max(14,min(98,b));d=max(b+1,min(103,d))
+            b=max(5,min(100,b));d=max(b+1,min(113,d))
             gray=ImageOps.grayscale(src)
-            bounds=gray.point(lambda v: 255 if v<235 else 0).getbbox()
+            bounds=gray.point(lambda v: 255 if v<185 else 0).getbbox()
             artwork=src.crop(bounds) if bounds else src
             _fitted(im,artwork,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
     title_box=(140,15,860,80)
@@ -360,18 +360,18 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # ancho de logo expresado como fracción de encabezado; evita solapes en 58 mm
     lw=min(lw,195)
     if logo_pos=='Extremos':
-        logo_at(ayto,10,12,10+lw,105)
-        logo_at(centro,990-lw,12,990,105)
+        logo_at(ayto,10,5,10+lw,114)
+        logo_at(centro,990-lw,5,990,114)
         title_box=(20+lw,14,980-lw,79)
         subtitle_box=(20+lw,78,980-lw,110)
     elif logo_pos=='Juntos a la izquierda':
-        logo_at(ayto,10,12,10+lw,105)
+        logo_at(ayto,10,5,10+lw,114)
         logo_at(centro,17+lw,12,17+lw*2,105)
         title_box=(35+lw*2,14,987,79)
         subtitle_box=(35+lw*2,78,987,110)
     elif logo_pos=='Juntos a la derecha':
         logo_at(ayto,983-lw*2,12,983-lw,105)
-        logo_at(centro,990-lw,12,990,105)
+        logo_at(centro,990-lw,5,990,114)
         title_box=(13,14,962-lw*2,79)
         subtitle_box=(13,78,962-lw*2,110)
     elif logo_pos=='Apilados a la izquierda':
