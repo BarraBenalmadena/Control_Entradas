@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps, ImageFilter
 import qrcode
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
+from reportlab.graphics.barcode.code128 import Code128
 from reportlab.lib.units import mm
 
 PRINTABLE_DOTS = {58: 384, 80: 576}
@@ -126,6 +127,36 @@ def _qr_image(value: str, max_width: int = 240, max_height: int = 240) -> Image.
         raise ValueError('El QR no cabe: aumenta la longitud del ticket o utiliza papel de 80 mm.')
     qr.box_size = box
     return qr.make_image(fill_color='black',back_color='white').convert('RGB')
+
+
+def barcode_ticket_value(ticket_id: str) -> str:
+    """16-digit bearer identifier derived from 52 random bits of the ticket UUID.
+
+    The original signed JSON/Windows event is still authoritative; a barcode
+    doesn't grant access without matching an issued, enrolled ticket.
+    """
+    return f"{int(str(ticket_id)[:13],16):016d}"
+
+
+def _code128_image(value: str, max_width: int, height: int) -> Image.Image:
+    """Render Code128C in integer pixels, with white quiet zones."""
+    code=Code128(value,barWidth=1,barHeight=height,humanReadable=False,quiet=False)
+    code.validate()
+    code.encode()
+    code.decompose()
+    units=sum(ord(c.lower())-96 for c in code.decomposed)
+    quiet=12
+    module=min(4,(max_width-quiet*2)//units)
+    if module < 1: raise ValueError("Sin espacio suficiente para código de barras.")
+    width=units*module+quiet*2
+    im=Image.new('RGB',(width,height),'white')
+    d=ImageDraw.Draw(im)
+    cursor=quiet
+    for c in code.decomposed:
+        size=(ord(c.lower())-96)*module
+        if c.isupper():d.rectangle((cursor,0,cursor+size-1,height-1),fill='black')
+        cursor+=size
+    return im
 
 
 TEMPLATES = (
@@ -658,6 +689,11 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     caption_y+=sz(22)
     text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
              (stub_left,caption_y,stub_right,caption_y+sz(29)),16,lines=2,min_size=9)
+    # Barcode alternativo, autenticado por inclusión en evento firmado/servidor.
+    # Ubicar en la franja entre descripción QR y "1 PERSONA".
+    barcode=_code128_image(barcode_ticket_value(ticket['id']),
+                           stub_right-stub_left, max(13,y(484)-y(448)))
+    im.paste(barcode,((stub_left+stub_right-barcode.width)//2,y(447)))
     text_box('1 PERSONA',(stub_left,y(486),stub_right,y(529)),26,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(540),stub_right,y(563)),14,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
