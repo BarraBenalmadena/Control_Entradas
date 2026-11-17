@@ -19,7 +19,13 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m unittest discover -s tests -v
       - name: Compilar aplicación con módulos de plano y exportación
-        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --name ControlEntradas_Windows desktop/control_entradas.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --collect-submodules=reportlab.graphics.barcode --name ControlEntradas_Windows desktop/control_entradas.py
+      - name: Comprobar módulos cargados dentro del EXE real
+        shell: pwsh
+        run: |
+          $result = & ".\\dist\\ControlEntradas_Windows.exe" --check-package
+          if ($LASTEXITCODE -ne 0) { throw "El EXE no arranca con los módulos Code128." }
+          if ($result -notmatch "EMPAQUETADO_OK") { throw "La prueba de empaquetado falló." }
       - uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Windows
