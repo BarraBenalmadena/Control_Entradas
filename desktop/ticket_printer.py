@@ -144,7 +144,7 @@ TEMPLATES = (
     '13 · Auditorio clásico',
     '14 · Programa cultural',
     '15 · Elegancia minimal',
-    '16 · Talón municipal',
+    '16 · Institucional limpio',
     '23 · Clásico tipográfico',
     '24 · Danza con banda negra',
     '25 · Concierto con laureles',
@@ -159,6 +159,10 @@ TEMPLATES = (
     '34 · Banda panorámica',
     '35 · Escenario en contraste',
     '36 · Geometría cultural',
+    '37 · Columnas blancas',
+    '38 · Diagonal blanca',
+    '39 · Escenario claro',
+    '40 · Cartel editorial blanco',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -176,6 +180,7 @@ DEFAULT_LOGO_POSITIONS = (
     'Extremos', 'Juntos a la izquierda', 'Extremos', 'Juntos a la derecha',
     'Extremos', 'Centrados', 'Extremos', 'Apilados a la izquierda',
     'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos',
+    'Extremos', 'Extremos', 'Extremos', 'Extremos',
 )
 
 
@@ -442,6 +447,13 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(label,(25,277,975,357),44,lines=2)
         bodytext(day+'   '+when,(25,361,975,424),40,lines=1,factor=date_factor)
         bodytext(place,(25,427,975,479),23,lines=2)
+    elif kind==15:  # Plantilla 16: antes aparecía en blanco
+        draw.rectangle(br(14,138,982,471),outline='black',width=stroke)
+        if poster:
+            photo((25,149,454,460),frame=True)
+            event_text(473,965,title_sz=43)
+        else:
+            event_text(29,969,title_sz=51)
     elif kind==16:  # 23: Clásico tipográfico
         photo((10,135,987,472),soften=.94)
         hline(148,45,955)
@@ -589,6 +601,36 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(when+' · '+place,(379,410,971,475),22,lines=2)
         else:
             event_text(365,980,title_sz=47)
+    elif kind==30:  # 37: Columnas completamente blancas
+        hline(255,12,385); hline(359,12,385)
+        bodytext(day,(20,158,379,246),37,lines=1,factor=date_factor)
+        bodytext(when,(20,271,379,353),53,lines=1,factor=date_factor)
+        bodytext(place,(20,373,380,471),25,lines=3)
+        draw.line((br(416,136,416,136)[0],y(136),br(397,470,397,470)[0],y(470)),fill='black',width=sz(3))
+        if poster:
+            photo((439,140,979,294),frame=True)
+            bodytext(label,(442,304,972,466),49,lines=3)
+        else: bodytext(label,(440,160,972,453),55,lines=3)
+    elif kind==31:  # 38: Diagonal de contorno, no bloque negro
+        draw.line((br(360,133,360,133)[0],y(133),br(260,471,260,471)[0],y(471)),fill='black',width=sz(4))
+        bodytext(day,(21,165,301,246),34,lines=1,factor=date_factor)
+        bodytext(when,(19,274,270,365),48,lines=1,factor=date_factor)
+        if poster:
+            photo((380,138,979,302),frame=True)
+            bodytext(label,(383,308,970,408),44,lines=2)
+            bodytext(place,(385,419,968,472),23,lines=2)
+        else: event_text(365,975,title_sz=47)
+    elif kind==32:  # 39: Cartel claro con columnas
+        if poster: photo((17,137,454,464),frame=True)
+        else: draw.rectangle(br(17,137,454,464),outline='black',width=stroke)
+        hline(134,470,980)
+        event_text(480,972,title_sz=46)
+    elif kind==33:  # 40: Editorial blanco, cartel panorámico
+        if poster: photo((18,136,981,306),frame=True)
+        else: draw.rectangle(br(18,136,981,306),outline='black',width=stroke)
+        bodytext(label,(25,317,970,380),46,lines=2)
+        bodytext(day+'  ·  '+when,(24,386,973,440),33,lines=1,factor=date_factor)
+        bodytext(place,(29,445,969,473),21,lines=1)
     hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
