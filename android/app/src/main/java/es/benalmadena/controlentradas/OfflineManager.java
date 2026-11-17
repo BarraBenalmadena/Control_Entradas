@@ -88,8 +88,22 @@ public final class OfflineManager {
             if(t.optString("id").isEmpty() || byId.put(t.getString("id"),t)!=null)throw new Exception("Identificador de entrada inválido o duplicado");
         }
         if(persist){
+            // A signed new inventory is the authority for this event. A reimport
+            // of identical signed payload preserves actual local access history.
+            String incoming=encoded;
+            String previous=prefs.getString("inventory_payload_"+event.optString("id"),"");
+            if(!previous.isEmpty() && !previous.equals(incoming)){
+                String oldPrefix="used_"+event.optString("id")+"_";
+                String timePrefix="used_time_"+event.optString("id")+"_";
+                SharedPreferences.Editor reset=prefs.edit();
+                for(String k:prefs.getAll().keySet()){
+                    if(k.startsWith(oldPrefix)||k.startsWith(timePrefix))reset.remove(k);
+                }
+                if(!reset.commit())throw new Exception("No se pudo cambiar el inventario de entradas");
+            }
             try(FileOutputStream out=new FileOutputStream(stored,false)){out.write(raw.getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
-            prefs.edit().putString("trusted_key",pub).commit();
+            prefs.edit().putString("trusted_key",pub)
+                .putString("inventory_payload_"+event.optString("id"),incoming).commit();
         }
         data=decoded;publicKey=pub;tickets.clear();tickets.putAll(byId);
         return event;
