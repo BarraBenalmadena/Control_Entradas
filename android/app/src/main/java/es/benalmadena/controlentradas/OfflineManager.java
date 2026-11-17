@@ -146,8 +146,26 @@ public final class OfflineManager {
         return rows;
     }
     public synchronized boolean hosting(){return server!=null&&!server.isClosed();}
+    private static String alternateBarcode(String id) {
+        if(id==null || id.length()<13)return "";
+        return String.format(java.util.Locale.US,"%016d",Long.parseLong(id.substring(0,13),16));
+    }
     private synchronized JSONObject verifyQr(String qr,String event) throws Exception {
         if(data==null)throw new Exception("Importa primero un JSON firmado");
+        if(qr!=null && qr.matches("[0-9]{16}")){
+            JSONObject match=null;
+            for(JSONObject candidate:tickets.values()){
+                if(qr.equals(alternateBarcode(candidate.optString("id")))){
+                    if(match!=null)throw new Exception("Código de barras duplicado");
+                    match=candidate;
+                }
+            }
+            if(match==null)throw new Exception("Código de barras no incluido en el JSON importado");
+            if(!event.equals(eventId()))throw new Exception("Código de otra función");
+            if(match.optBoolean("used"))throw new Exception("Entrada ya utilizada al exportar el evento");
+            return new JSONObject().put("id",match.getString("id")).put("e",event)
+                .put("n",match.optInt("number")).put("s",match.optString("seat",""));
+        }
         String[] parts=qr.split("\\.");
         if(parts.length!=3||!parts[0].equals("CE1"))throw new Exception("QR no reconocido");
         PublicKey key=KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(Base64.decode(publicKey,Base64.DEFAULT)));
