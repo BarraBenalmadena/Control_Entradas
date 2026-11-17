@@ -844,7 +844,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (10 modelos)',
+            'plantilla':'Diseño (30 modelos)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
@@ -1011,6 +1011,18 @@ def launch_gui():
                 wid=viewport.create_window((0,0),window=inner,anchor='nw')
                 inner.bind('<Configure>',lambda *_:viewport.configure(scrollregion=viewport.bbox('all')))
                 viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
+                gallery_controls=ttk.Frame(shell)
+                gallery_controls.pack(fill='x',before=viewport)
+                ttk.Label(gallery_controls,text='VERSIÓN DE LOS DISEÑOS:').pack(side='left',padx=5)
+                def gallery_style(style):
+                    variables['modo_impresion'].set(style)
+                    gallery_win.destroy()
+                    gallery()
+                ttk.Button(gallery_controls,text='NORMAL (NEGRO)',
+                           command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
+                ttk.Button(gallery_controls,text='BLANCO ECONÓMICO',
+                           command=lambda:gallery_style('Blanco económico')).pack(side='left',padx=5)
+                ttk.Label(gallery_controls,text='Mostrando: '+variables['modo_impresion'].get()).pack(side='left',padx=9)
                 # Mismo bitmap que se envía a la impresora: miniatura centrada,
                 # sin crops y sin cambiar la relación de aspecto.
                 for i,template in enumerate(ticket_printer.TEMPLATES):
@@ -1034,6 +1046,7 @@ def launch_gui():
                               foreground='#42586a').pack(anchor='center',pady=(2,0))
                     def choose(t=template):
                         variables['plantilla'].set(t)
+                        variables['modo_impresion'].set(d.get('modo_impresion','Normal'))
                         notebook.select(page_design)
                         note.set(f'Diseño seleccionado: {t}. Puedes ajustar el cartel, tamaño de logos y guardar.')
                         gallery_win.destroy()
