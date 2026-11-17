@@ -112,6 +112,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView offlineStatus;
     private Button ticketListButton;
     private TextView availableListView,usedListView;
+    private Spinner accessOrder;
     private EditText ticketSearch;
     private LinearLayout accessListPanel;
     private int validatedSession = 0;
@@ -365,6 +366,14 @@ public class MainActivity extends AppCompatActivity {
         pendingScroll.addView(availableListView);
         accessListPanel.addView(pendingScroll,new LinearLayout.LayoutParams(-1,dp(165)));
         accessListPanel.addView(text("VALIDADAS · FECHA Y HORA",14,true));
+        accessOrder=new Spinner(this);
+        accessOrder.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,
+            new String[]{"Por número de entrada","Por orden de llegada (última primero)","Por llegada (primera primero)"}));
+        accessOrder.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> p,View v,int n,long id){refreshAccessLists();}
+            public void onNothingSelected(android.widget.AdapterView<?> p){}
+        });
+        accessListPanel.addView(accessOrder);
         ScrollView approvedScroll=new ScrollView(this);
         approvedScroll.setNestedScrollingEnabled(true);
         usedListView=text("Todavía no hay accesos.",13,false);
@@ -479,9 +488,20 @@ public class MainActivity extends AppCompatActivity {
         JSONArray items=offline.ticketList();
         String q=ticketSearch==null?"":ticketSearch.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
         StringBuilder available=new StringBuilder(),approved=new StringBuilder();
-        int pending=0,used=0;
+        java.util.ArrayList<JSONObject> ordered=new java.util.ArrayList<>();
         for(int i=0;i<items.length();i++){
-            JSONObject t=items.optJSONObject(i);if(t==null)continue;
+            JSONObject row=items.optJSONObject(i);
+            if(row!=null)ordered.add(row);
+        }
+        int order=accessOrder==null?0:accessOrder.getSelectedItemPosition();
+        if(order!=0)ordered.sort((a,b)->{
+            String ta=a.optString("used_at",""),tb=b.optString("used_at","");
+            int compared=ta.compareTo(tb);
+            if(compared==0)compared=Integer.compare(a.optInt("number"),b.optInt("number"));
+            return order==1?-compared:compared;
+        });
+        int pending=0,used=0;
+        for(JSONObject t:ordered){
             String num=String.format(java.util.Locale.US,"%04d",t.optInt("number"));
             String seat=t.optString("seat","");
             if("null".equalsIgnoreCase(seat))seat="";
