@@ -483,6 +483,14 @@ public class MainActivity extends AppCompatActivity {
         refreshAccessLists();
     }
 
+    private String accessTimeSortKey(String value){
+        if(value==null)return "";
+        // Local: dd/MM/yyyy HH:mm:ss; server: ISO 8601.
+        if(value.length()>=19 && value.charAt(2)=='/' && value.charAt(5)=='/'){
+            return value.substring(6,10)+value.substring(3,5)+value.substring(0,2)+value.substring(11,19);
+        }
+        return value.replace("-","").replace("T","").replace(":","");
+    }
     private void refreshAccessLists(){
         if(availableListView==null || usedListView==null || offline==null || !offline.hasPackage())return;
         JSONArray items=offline.ticketList();
@@ -496,7 +504,8 @@ public class MainActivity extends AppCompatActivity {
         int order=accessOrder==null?0:accessOrder.getSelectedItemPosition();
         if(order!=0)ordered.sort((a,b)->{
             String ta=a.optString("used_at",""),tb=b.optString("used_at","");
-            int compared=ta.compareTo(tb);
+            String ka=accessTimeSortKey(ta),kb=accessTimeSortKey(tb);
+            int compared=ka.compareTo(kb);
             if(compared==0)compared=Integer.compare(a.optInt("number"),b.optInt("number"));
             return order==1?-compared:compared;
         });
