@@ -116,6 +116,7 @@ public final class OfflineManager {
                 item.put("seat",t.optString("seat",""));
                 item.put("used",t.optBoolean("used") ||
                         prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false));
+                item.put("used_at", prefs.getString("used_time_"+eid+"_"+t.optString("id"), t.optString("used_at","")));
                 item.put("reserved",t.optBoolean("reserved"));
                 item.put("printed",t.optBoolean("submitted_to_printer"));
                 item.put("print_known",t.has("submitted_to_printer"));
@@ -148,7 +149,8 @@ public final class OfflineManager {
             if(number<start||number>end)throw new Exception("Entrada fuera del rango autorizado: "+start+"–"+end);
             String used="used_"+event+"_"+d.getString("id");
             if(prefs.getBoolean(used,false))throw new Exception("Esta entrada ya fue validada aquí");
-            if(!prefs.edit().putBoolean(used,true).commit())throw new Exception("No se pudo guardar el acceso");
+            String accessTime=new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(new java.util.Date());
+            if(!prefs.edit().putBoolean(used,true).putString("used_time_"+event+"_"+d.getString("id"),accessTime).commit())throw new Exception("No se pudo guardar el acceso");
             return new JSONObject().put("status","valid").put("message","ACCESO AUTORIZADO").put("number",number)
                     .put("seat",d.optString("s","")).put("device",device);
         } catch(Exception ex) {
@@ -156,6 +158,18 @@ public final class OfflineManager {
             try{error.put("status","invalid").put("message",ex.getMessage());}catch(Exception ignored){}
             return error;
         }
+    }
+    public synchronized int resetLocalAccesses() throws Exception {
+        if(data==null)throw new Exception("Importa primero un JSON firmado");
+        String prefix="used_"+eventId()+"_", timePrefix="used_time_"+eventId()+"_";
+        SharedPreferences.Editor editor=prefs.edit();
+        int count=0;
+        for(String key:prefs.getAll().keySet()){
+            if(key.startsWith(prefix)){editor.remove(key);count++;}
+            if(key.startsWith(timePrefix))editor.remove(key);
+        }
+        if(!editor.commit())throw new Exception("No se pudieron restablecer los accesos");
+        return count;
     }
     public synchronized JSONObject accessAudit(String deviceId) throws Exception {
         if(data==null)throw new Exception("No hay un evento importado");
