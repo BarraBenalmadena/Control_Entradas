@@ -1,4 +1,4 @@
-name: Compilar v2.0 Windows y Android
+name: Compilar v2.1 Windows y Android
 on:
   push:
     branches: [main]
