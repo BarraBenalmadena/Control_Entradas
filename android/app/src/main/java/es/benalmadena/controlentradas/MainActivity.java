@@ -723,6 +723,20 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+    private String scanIdentity(String raw) {
+        if(raw.matches("[0-9]{16}"))return raw;
+        if(raw.startsWith("CE1."))try{
+            String[] pieces=raw.split("\\.");
+            if(pieces.length==3){
+                String content=new String(Base64.decode(pieces[1],
+                    Base64.URL_SAFE|Base64.NO_PADDING|Base64.NO_WRAP),StandardCharsets.UTF_8);
+                String id=new JSONObject(content).optString("id","");
+                if(id.matches("[0-9a-f]{32}"))
+                    return String.format(java.util.Locale.US,"%016d",Long.parseLong(id.substring(0,13),16));
+            }
+        }catch(Exception ignored){}
+        return raw;
+    }
     private void applyCameraZoom(){
         if (activeCamera != null) {
             androidx.camera.core.ZoomState state = activeCamera.getCameraInfo().getZoomState().getValue();
@@ -770,20 +784,21 @@ public class MainActivity extends AppCompatActivity {
                                 if(now-lastQrVisibleMs>400)blockedQr="";
                                 return;
                             }
-                            boolean same=candidate.equals(blockedQr);
+                            String scanKey=scanIdentity(candidate);
+                            boolean same=scanKey.equals(blockedQr);
                             lastQrVisibleMs=now;
                             if(same || analyzing.get())return;
                             showResult("CÓDIGO DETECTADO · VALIDANDO...",Color.rgb(130,82,0));
                             detectedBeep();
                             if(!candidate.startsWith("CE1.") && !candidate.matches("[0-9]{16}")){
-                                blockedQr=candidate;
+                                blockedQr=scanKey;
                                 showResult("CÓDIGO QR/BARRAS NO VÁLIDO",Color.RED);
                                 scanFeedback(false);
                                 say("Código QR no válido para este espectáculo.");
                                 return;
                             }
                             if(analyzing.compareAndSet(false,true)){
-                                blockedQr=candidate;
+                                blockedQr=scanKey;
                                 processQr(candidate);
                             }
                         })
