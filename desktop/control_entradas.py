@@ -727,13 +727,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · ZYWELL · v2.1')
+        win.title('Diseñador de entradas · ZYWELL · v2.2')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='TICKETS HORIZONTALES · 30 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='TICKETS HORIZONTALES · 34 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -844,7 +844,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (30 modelos)',
+            'plantilla':'Diseño (34 modelos)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
