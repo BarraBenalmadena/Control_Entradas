@@ -92,6 +92,12 @@ public final class OfflineManager {
             // of identical signed payload preserves actual local access history.
             String incoming=encoded;
             String previous=prefs.getString("inventory_payload_"+event.optString("id"),"");
+            if(previous.isEmpty() && stored.isFile()){
+                try{
+                    JSONObject former=new JSONObject(new String(readAll(new FileInputStream(stored),4_000_000),StandardCharsets.UTF_8));
+                    previous=former.optString("payload","");
+                }catch(Exception ignored){}
+            }
             if(!previous.isEmpty() && !previous.equals(incoming)){
                 String oldPrefix="used_"+event.optString("id")+"_";
                 String timePrefix="used_time_"+event.optString("id")+"_";
