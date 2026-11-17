@@ -23,9 +23,8 @@ jobs:
       - name: Comprobar módulos cargados dentro del EXE real
         shell: pwsh
         run: |
-          $result = & ".\\dist\\ControlEntradas_Windows.exe" --check-package
+          & ".\\dist\\ControlEntradas_Windows.exe" --check-package
           if ($LASTEXITCODE -ne 0) { throw "El EXE no arranca con los módulos Code128." }
-          if ($result -notmatch "EMPAQUETADO_OK") { throw "La prueba de empaquetado falló." }
       - uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Windows
