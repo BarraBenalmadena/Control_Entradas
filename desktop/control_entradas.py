@@ -305,17 +305,31 @@ def parse_qr(qr: str):
 
 
 def validate(qr: str, event_id: str, device_id: str) -> dict:
-    try:
-        payload = parse_qr(qr)
-    except (InvalidSignature, ValueError, TypeError, UnicodeError, json.JSONDecodeError, KeyError):
-        return {"status": "invalid", "message": "QR NO VÁLIDO"}
+    if isinstance(qr,str) and len(qr)==16 and qr.isascii() and qr.isdigit():
+        # Code128 is a bearer token; lookup is restricted to this event,
+        # and uses the same single-use transaction as the signed QR.
+        with connect() as conn:
+            matches=conn.execute("SELECT id,number,seat_label,used_at FROM tickets WHERE event_id=?",(event_id,)).fetchall()
+        target=[t for t in matches if ticket_printer.barcode_ticket_value(t["id"])==qr]
+        if len(target)!=1:
+            return {"status":"invalid","message":"CÓDIGO DE BARRAS DESCONOCIDO"}
+        ticket_id=target[0]["id"]
+        payload={"id":ticket_id,"e":event_id}
+        # Barcode never bypasses event registration; verified by issued UUID.
+        expected_qr=None
+    else:
+        try:
+            payload = parse_qr(qr)
+        except (InvalidSignature, ValueError, TypeError, UnicodeError, json.JSONDecodeError, KeyError):
+            return {"status": "invalid", "message": "QR O BARRAS NO VÁLIDO"}
+        expected_qr=qr
     if payload["e"] != event_id:
         return {"status": "wrong_event", "message": "ENTRADA DE OTRA FUNCIÓN"}
     with connect() as conn:
         try:
             conn.execute("BEGIN IMMEDIATE")
             ticket = conn.execute("SELECT number, seat_label, qr, used_at FROM tickets WHERE id=? AND event_id=?", (payload["id"], event_id)).fetchone()
-            if not ticket or ticket["qr"] != qr:
+            if not ticket or (expected_qr is not None and ticket["qr"] != expected_qr):
                 conn.rollback()
                 return {"status": "invalid", "message": "ENTRADA DESCONOCIDA"}
             if ticket["used_at"]:
