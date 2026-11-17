@@ -11,7 +11,7 @@ from pathlib import Path
 import io
 import math
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps, ImageFilter
 import qrcode
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
@@ -180,7 +180,7 @@ DEFAULT_LOGO_POSITIONS = (
 
 
 
-def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar y recortar', soften=0.0):
+def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar y recortar', soften=0.0, economy=False):
     '''Imagen llena su zona (cover) o se muestra completa (contain).'''
     if source is None:
         return
@@ -196,6 +196,10 @@ def _fitted(im: Image.Image, source: Image.Image | None, rect, method='Rellenar 
         target=(x0,y0)
     if soften:
         cropped=Image.blend(cropped.convert('RGB'),Image.new('RGB',cropped.size,'white'),max(0.0,min(0.95,soften)))
+    if economy:
+        gray=ImageOps.autocontrast(ImageOps.grayscale(cropped))
+        edges=ImageOps.invert(gray.filter(ImageFilter.FIND_EDGES))
+        cropped=edges.point(lambda p: 0 if p < 105 else 255).convert('RGB')
     im.paste(cropped,target)
 
 
@@ -234,7 +238,7 @@ def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -
     if H-T-B<205:
         raise ValueError('Márgenes superior e inferior demasiado grandes para el QR.')
     sx = (H-T-B)/576
-    stub = round(260 * H/576)  # v1.2: más anchura reservada para QR ópticamente legible
+    stub = round(302 * H/576)  # v1.2: más anchura reservada para QR ópticamente legible
     divider = W-right_limit-stub
     R = divider-round(8*H/576)
     usable = R-L
@@ -248,6 +252,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
                             design: dict | None = None, *, length_mm: int | None = None) -> Image.Image:
     """Render idéntico para PDF y RAW ESC/POS. QR preservado a píxeles nativos."""
     design = design or {}
+    blanco = design.get('modo_impresion', 'Normal') == 'Blanco económico'
     g = geometry(width_mm,length_mm,design)
     W,H,L,R,T,B = (g[x] for x in ('W','H','L','R','T','B'))
     divider,usable = g['divider'],g['usable']
@@ -281,7 +286,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         text_box(txt,br(*rect),size,bold=bold,lines=lines,min_size=min_size,color=color,factor=factor)
     def photo(rect,*,soften=0.0,frame=False):
         box=br(*rect)
-        if poster is not None: _fitted(im,poster,box,fit,soften)
+        if poster is not None: _fitted(im,poster,box,fit,0.0 if blanco else soften,economy=blanco)
         if frame and poster is not None:
             draw.rectangle((box[0],box[1],box[2]-1,box[3]-1),outline='black',width=stroke)
     def hline(yy,xstart=0,xend=1000):
@@ -442,20 +447,20 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day+'   |   '+when,(32,317,970,388),38,lines=1,factor=date_factor)
         bodytext(place,(45,400,956,474),27,lines=2)
     elif kind==17:  # 24: Danza, cabecera negra y composición en dos columnas
-        draw.rectangle(br(5,125,995,173),fill='black')
-        bodytext('DANZA', (35,127,965,172),32,color='white',lines=1)
+        draw.rectangle(br(5,125,995,173),fill='white' if blanco else 'black')
+        bodytext('DANZA', (35,127,965,172),32,color='black' if blanco else 'white',lines=1)
         photo((8,179,438,475),soften=.44)
         if poster is None:
             # Movimiento de bailarinas representado mediante curvas y círculos
             for cx in (155,299):
                 xx,yy=br(cx,236,cx,236)[:2]
                 rr=sz(18)
-                draw.ellipse((xx-rr,yy-rr,xx+rr,yy+rr),fill='black')
-                draw.line((xx,yy+rr,xx-sz(18),y(371)),fill='black',width=sz(10))
-                draw.line((xx-sz(18),y(371),xx-sz(80),y(436)),fill='black',width=sz(8))
-                draw.line((xx-sz(18),y(371),xx+sz(60),y(418)),fill='black',width=sz(8))
-                draw.line((xx,y(287),xx+sz(79),y(237)),fill='black',width=sz(6))
-        draw.line((br(447,181,447,471)[0],y(181),br(447,181,447,471)[0],y(471)),fill='black',width=stroke)
+                draw.ellipse((xx-rr,yy-rr,xx+rr,yy+rr),fill='white' if blanco else 'black')
+                draw.line((xx,yy+rr,xx-sz(18),y(371)),fill='white' if blanco else 'black',width=sz(10))
+                draw.line((xx-sz(18),y(371),xx-sz(80),y(436)),fill='white' if blanco else 'black',width=sz(8))
+                draw.line((xx-sz(18),y(371),xx+sz(60),y(418)),fill='white' if blanco else 'black',width=sz(8))
+                draw.line((xx,y(287),xx+sz(79),y(237)),fill='white' if blanco else 'black',width=sz(6))
+        draw.line((br(447,181,447,471)[0],y(181),br(447,181,447,471)[0],y(471)),fill='white' if blanco else 'black',width=stroke)
         event_text(460,979,title_y=(184,290),day_y=(298,356),time_y=(355,416),place_y=(413,472),title_sz=49)
     elif kind==18:  # 25: fotografía principal y datos
         if poster:
@@ -472,7 +477,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(when,(19,267,379,345),51,lines=1,factor=date_factor)
         bodytext(place,(20,367,379,477),23,lines=3)
         draw.line((br(425,132,425,132)[0],y(132),
-                   br(391,475,391,475)[0],y(475)),fill='black',width=sz(6))
+                   br(391,475,391,475)[0],y(475)),fill='white' if blanco else 'black',width=sz(6))
         if poster:
             photo((447,135,980,298),frame=True)
             bodytext(label,(445,308,975,468),50,lines=3,min_size=16)
@@ -490,9 +495,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(day+' · '+when,(100,342,895,412),39,lines=1,factor=date_factor)
             bodytext(place,(110,418,889,470),26,lines=2)
     elif kind==21:  # 28: bloque lateral, foto visible
-        draw.rectangle(br(12,138,311,470),fill='black')
+        draw.rectangle(br(12,138,311,470),fill='white' if blanco else 'black')
         bodytext('ACCESO LIBRE' if event['mode']=='libre' else 'BUTACA ASIGNADA',
-                 (25,194,295,344),31,lines=3,color='white')
+                 (25,194,295,344),31,lines=3,color='black' if blanco else 'white')
         if poster:
             photo((335,134,982,298),frame=True)
             bodytext(label,(347,305,973,384),42,lines=2)
@@ -512,9 +517,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(place,(105,408,895,467),25,lines=2)
     elif kind==23:  # 30: diagonal y fotografía visible
         draw.polygon([br(9,129,9,129)[:2],br(386,129,386,129)[:2],
-                      br(260,475,260,475)[:2],br(9,475,9,475)[:2]],fill='black')
-        bodytext('ENTRADA',(24,159,298,230),32,color='white',lines=1)
-        bodytext('CULTURAL',(23,234,292,304),29,color='white',lines=1)
+                      br(260,475,260,475)[:2],br(9,475,9,475)[:2]],fill='white' if blanco else 'black')
+        bodytext('ENTRADA',(24,159,298,230),32,color='black' if blanco else 'white',lines=1)
+        bodytext('CULTURAL',(23,234,292,304),29,color='black' if blanco else 'white',lines=1)
         if poster:
             photo((402,133,984,302),frame=True)
             bodytext(label,(410,307,979,390),43,lines=2)
@@ -523,10 +528,10 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         else:
             event_text(405,982,title_sz=47)
     elif kind==24:  # 31: escenario, izquierda oscura
-        draw.rectangle(br(13,137,297,472),fill='black')
-        bodytext(day,(20,163,284,230),34,color='white',lines=1,factor=date_factor)
-        bodytext(when,(20,264,283,342),43,color='white',lines=1,factor=date_factor)
-        bodytext('ENTRADA',(22,384,282,452),29,color='white',lines=1)
+        draw.rectangle(br(13,137,297,472),fill='white' if blanco else 'black')
+        bodytext(day,(20,163,284,230),34,color='black' if blanco else 'white',lines=1,factor=date_factor)
+        bodytext(when,(20,264,283,342),43,color='black' if blanco else 'white',lines=1,factor=date_factor)
+        bodytext('ENTRADA',(22,384,282,452),29,color='black' if blanco else 'white',lines=1)
         if poster:
             photo((321,136,983,300),frame=True)
             bodytext(label,(332,305,976,398),47,lines=2)
@@ -535,9 +540,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             event_text(322,982,title_sz=48)
     elif kind==25:  # 32: diagonal fotográfica
         draw.polygon([br(11,131,11,131)[:2],br(456,131,456,131)[:2],
-                      br(329,475,329,475)[:2],br(11,475,11,475)[:2]],fill='black')
-        bodytext(day,(25,170,335,238),33,color='white',lines=1,factor=date_factor)
-        bodytext(when,(20,283,319,370),48,color='white',lines=1,factor=date_factor)
+                      br(329,475,329,475)[:2],br(11,475,11,475)[:2]],fill='white' if blanco else 'black')
+        bodytext(day,(25,170,335,238),33,color='black' if blanco else 'white',lines=1,factor=date_factor)
+        bodytext(when,(20,283,319,370),48,color='black' if blanco else 'white',lines=1,factor=date_factor)
         if poster:
             photo((471,134,983,307),frame=True)
             bodytext(label,(479,311,977,407),43,lines=2)
@@ -561,9 +566,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day+' · '+when,(24,394,969,442),31,lines=1,factor=date_factor)
         bodytext(place,(28,447,963,479),21,lines=1)
     elif kind==28:  # 35: lateral negro y cartel
-        draw.rectangle(br(13,139,317,472),fill='black')
-        bodytext('CONTROL DE ACCESO',(22,173,300,291),28,color='white',lines=3)
-        bodytext(when,(23,344,299,440),42,color='white',lines=1,factor=date_factor)
+        draw.rectangle(br(13,139,317,472),fill='white' if blanco else 'black')
+        bodytext('CONTROL DE ACCESO',(22,173,300,291),28,color='black' if blanco else 'white',lines=3)
+        bodytext(when,(23,344,299,440),42,color='black' if blanco else 'white',lines=1,factor=date_factor)
         if poster:
             photo((339,134,984,303),frame=True)
             bodytext(label,(349,310,973,405),44,lines=2)
@@ -572,9 +577,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             event_text(340,980,title_sz=47)
     elif kind==29:  # 36: geometría cultural
         draw.polygon([br(12,130,12,130)[:2],br(347,130,347,130)[:2],
-                      br(243,475,243,475)[:2],br(12,475,12,475)[:2]],fill='black')
-        bodytext('CULTURA',(25,170,286,260),36,color='white',lines=1)
-        bodytext(day,(25,313,267,391),29,color='white',lines=1,factor=date_factor)
+                      br(243,475,243,475)[:2],br(12,475,12,475)[:2]],fill='white' if blanco else 'black')
+        bodytext('CULTURA',(25,170,286,260),36,color='black' if blanco else 'white',lines=1)
+        bodytext(day,(25,313,267,391),29,color='black' if blanco else 'white',lines=1,factor=date_factor)
         if poster:
             photo((368,134,982,306),frame=True)
             bodytext(label,(375,314,976,403),46,lines=2)
@@ -599,7 +604,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # Priorizar módulos grandes incluso en papel térmico. Calcular el límite
     # teniendo en cuenta la caja real: nunca redimensionar una matriz QR.
     qy=y(182)
-    qr_limit=y(424)-qy
+    qr_limit=y(465)-qy
     qr=_qr_image(ticket['qr'],stub_right-stub_left-xu(4),qr_limit)
     qx=(stub_left+stub_right-qr.width)//2
     im.paste(qr,(qx,qy))
@@ -608,8 +613,8 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     caption_y+=sz(22)
     text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
              (stub_left,caption_y,stub_right,caption_y+sz(29)),16,lines=2,min_size=9)
-    text_box('1 PERSONA',(stub_left,y(468),stub_right,y(525)),29,lines=1,min_size=13)
-    text_box('PROHIBIDA SU VENTA',(stub_left,y(534),stub_right,y(562)),15,lines=1,min_size=9)
+    text_box('1 PERSONA',(stub_left,y(486),stub_right,y(529)),26,lines=1,min_size=13)
+    text_box('PROHIBIDA SU VENTA',(stub_left,y(540),stub_right,y(563)),14,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 
 def render_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None, *, length_mm: int|None=None) -> Image.Image:
