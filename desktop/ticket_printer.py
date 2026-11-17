@@ -386,11 +386,11 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day,(28,275,975,350),44,lines=1,min_size=18,factor=date_factor)
         bodytext(when,(28,348,975,421),58,lines=1,min_size=20,factor=date_factor)
         bar=br(36,437,965,482)
-        draw.rectangle(bar,fill='black')
-        text_box(place,bar,23,lines=1,min_size=11,color='white')
+        draw.rectangle(bar,fill='white' if blanco else 'black')
+        text_box(place,bar,23,lines=1,min_size=11,color='black' if blanco else 'white')
     elif kind==4:  # Editorial
         photo((604,126,995,481),frame=True)
-        draw.rectangle(br(8,132,22,474),fill='black')
+        draw.rectangle(br(8,132,22,474),fill='white' if blanco else 'black')
         event_text(37,588 if poster else 980,title_sz=47)
     elif kind==5:  # Mosaico
         photo((5,126,259,480),frame=True)
@@ -408,12 +408,12 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         event_text(290,955,title_y=(162,260),day_y=(263,322),time_y=(323,386),place_y=(388,449),title_sz=39)
     elif kind==8:  # Tríptico: tres cuadros y divisor
         photo((8,125,336,483),frame=True)
-        draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='black',width=stroke)
+        draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='white' if blanco else 'black',width=stroke)
         event_text(351,982,title_y=(131,239),day_y=(249,306),time_y=(313,399),place_y=(404,474),title_sz=47)
     elif kind==9:  # Minimalista
         photo((8,129,204,477))
         if poster:
-            draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='black',width=stroke)
+            draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='white' if blanco else 'black',width=stroke)
         event_text(225 if poster else 35,979,title_y=(152,257),day_y=(267,326),time_y=(337,411),place_y=(422,474),title_sz=51)
     elif kind==10:  # Institucional formal: imagen opcional fina a la izquierda
         photo((10,130,254,477))
@@ -426,14 +426,14 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(when,(25,332,595,405),51,lines=1,factor=date_factor)
         bodytext(place,(25,407,605,477),22,lines=2)
     elif kind==12:  # Auditorio clásico: formal sin cartel dominante
-        draw.line((br(48,141,950,141)[0],y(141),br(48,141,950,141)[2],y(141)),fill='black',width=stroke)
+        draw.line((br(48,141,950,141)[0],y(141),br(48,141,950,141)[2],y(141)),fill='white' if blanco else 'black',width=stroke)
         bodytext(label,(50,160,950,294),56,lines=3,min_size=19)
         bodytext(day+'     '+when,(55,310,945,380),37,lines=1,factor=date_factor)
         bodytext(place,(55,395,945,474),28,lines=2)
     elif kind==13:  # Programa cultural: poster alto y texto a la izquierda
         photo((672,135,981,475),frame=bool(poster))
         event_text(24,660,title_y=(155,263),day_y=(269,326),time_y=(334,401),place_y=(411,473),title_sz=46)
-        draw.line((br(665,134,665,476)[0],y(134),br(665,134,665,476)[0],y(476)),fill='black',width=stroke)
+        draw.line((br(665,134,665,476)[0],y(134),br(665,134,665,476)[0],y(476)),fill='white' if blanco else 'black',width=stroke)
     elif kind==14:  # Elegancia minimal: poster horizontal discreto
         photo((12,136,988,274))
         bodytext(label,(25,277,975,357),44,lines=2)
