@@ -21,7 +21,7 @@ def assert_qr_not_deformed(testcase, img, raw_qr, paper_mm, design=None):
     left=g['divider']+round(8*s)
     right=img.width-g['right_limit']-round(4*s)
     y=g['T']+round(182*g['sx'])
-    qr=ticket_printer._qr_image(raw_qr,right-left-round(4*s),g['T']+round(424*g['sx'])-y)
+    qr=ticket_printer._qr_image(raw_qr,right-left-round(4*s),g['T']+round(465*g['sx'])-y)
     x=(left+right-qr.width)//2
     cropped=np.asarray(img)[y:y+qr.height,x:x+qr.width]
     testcase.assertTrue(np.array_equal(cropped,np.asarray(qr)),'El QR ha sido deformado')
