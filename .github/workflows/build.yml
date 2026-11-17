@@ -23,8 +23,8 @@ jobs:
       - name: Comprobar módulos cargados dentro del EXE real
         shell: pwsh
         run: |
-          & ".\\dist\\ControlEntradas_Windows.exe" --check-package
-          if ($LASTEXITCODE -ne 0) { throw "El EXE no arranca con los módulos Code128." }
+          $p = Start-Process -FilePath ".\\dist\\ControlEntradas_Windows.exe" -ArgumentList "--check-package" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "El EXE no arranca con los módulos Code128 (código $($p.ExitCode))." }
       - uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Windows
