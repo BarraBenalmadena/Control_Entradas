@@ -765,6 +765,7 @@ def launch_gui():
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
+            'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')), 
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
             'posicion_logos':tk.StringVar(value=config.get('posicion_logos','Según plantilla')),
             'margen_izquierdo_mm':tk.StringVar(value=str(config.get('margen_izquierdo_mm','2'))),
@@ -847,6 +848,7 @@ def launch_gui():
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
+            'modo_impresion':'Impresión térmica: normal o blanca (menos tinta)',
             'margen_izquierdo_mm':'Margen izquierdo / inicio (mm)',
             'margen_derecho_mm':'Margen derecho / corte (mm)',
             'margen_superior_mm':'Margen superior (mm)',
@@ -868,6 +870,7 @@ def launch_gui():
             'plantilla':ticket_printer.TEMPLATES,
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
+            'modo_impresion':('Normal','Blanco económico'),
             'tamano_logos':ticket_printer.LOGO_SIZES,
             'margen_izquierdo_mm':margin_choices,
             'margen_derecho_mm':margin_choices,
