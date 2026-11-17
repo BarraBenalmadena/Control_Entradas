@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
             });
         });
         BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE,Barcode.FORMAT_CODE_128)
             .enableAllPotentialBarcodes()
             .setZoomSuggestionOptions(new ZoomSuggestionOptions.Builder(ratio -> {
                 if(activeCamera==null || !continuousEnabled || analyzing.get())return false;
@@ -762,7 +762,7 @@ public class MainActivity extends AppCompatActivity {
                                 String value=barcode.getRawValue();
                                 if(value==null || value.trim().isEmpty())continue;
                                 value=value.trim();
-                                if(value.startsWith("CE1.")){candidate=value;break;}
+                                if(value.startsWith("CE1.") || value.matches("[0-9]{16}")){candidate=value;break;}
                                 if(candidate==null)candidate=value;
                             }
                             long now=SystemClock.elapsedRealtime();
@@ -773,11 +773,11 @@ public class MainActivity extends AppCompatActivity {
                             boolean same=candidate.equals(blockedQr);
                             lastQrVisibleMs=now;
                             if(same || analyzing.get())return;
-                            showResult("QR DETECTADO · VALIDANDO ENTRADA...",Color.rgb(130,82,0));
+                            showResult("CÓDIGO DETECTADO · VALIDANDO...",Color.rgb(130,82,0));
                             detectedBeep();
-                            if(!candidate.startsWith("CE1.")){
+                            if(!candidate.startsWith("CE1.") && !candidate.matches("[0-9]{16}")){
                                 blockedQr=candidate;
-                                showResult("QR DETECTADO · FORMATO NO VÁLIDO PARA ESTE SISTEMA",Color.RED);
+                                showResult("CÓDIGO QR/BARRAS NO VÁLIDO",Color.RED);
                                 scanFeedback(false);
                                 say("Código QR no válido para este espectáculo.");
                                 return;
