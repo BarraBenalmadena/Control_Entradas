@@ -153,6 +153,12 @@ TEMPLATES = (
     '28 · Gala acceso general',
     '29 · Ornamental clásico',
     '30 · Diagonal moderna',
+    '31 · Escenario moderno',
+    '32 · Diagonal con cartel',
+    '33 · Columna elegante',
+    '34 · Banda panorámica',
+    '35 · Escenario en contraste',
+    '36 · Geometría cultural',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -169,6 +175,7 @@ DEFAULT_LOGO_POSITIONS = (
     'Juntos a la derecha', 'Centrados', 'Apilados a la izquierda',
     'Extremos', 'Juntos a la izquierda', 'Extremos', 'Juntos a la derecha',
     'Extremos', 'Centrados', 'Extremos', 'Apilados a la izquierda',
+    'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos',
 )
 
 
@@ -291,7 +298,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     if logo_pos not in LOGO_POSITIONS:
         raise ValueError('Posición de logotipos no reconocida.')
     logo_setting=design.get('tamano_logos','Grandes')
-    logo_w={'Pequeños':90,'Medianos':113,'Grandes':145}.get(logo_setting,113)
+    logo_w={'Pequeños':155,'Medianos':165,'Grandes':185}.get(logo_setting,185)
     # Coordenadas de encabezado en medidas relativas a su ancho, y en altura 0..117.
     def hx(rel): return L+round(usable*rel/1000)
     def logo_at(src,a,b,c,d):
@@ -299,12 +306,15 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             # Never let a logo invade the decorative frame (or overlap the cut zone).
             a=max(15,min(985,a));c=max(a+1,min(985,c))
             b=max(14,min(98,b));d=max(b+1,min(103,d))
-            _fitted(im,src,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
+            gray=ImageOps.grayscale(src)
+            bounds=gray.point(lambda v: 255 if v<235 else 0).getbbox()
+            artwork=src.crop(bounds) if bounds else src
+            _fitted(im,artwork,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
     title_box=(140,15,860,80)
     subtitle_box=(140,79,860,110)
     lw=min(185,max(80,round(logo_w*1000/max(usable,1)*xunit)))
     # ancho de logo expresado como fracción de encabezado; evita solapes en 58 mm
-    lw=min(lw,165)
+    lw=min(lw,195)
     if logo_pos=='Extremos':
         logo_at(ayto,10,12,10+lw,105)
         logo_at(centro,990-lw,12,990,105)
