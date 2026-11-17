@@ -49,6 +49,7 @@ import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.barcode.BarcodeScanner;
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
 import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.barcode.ZoomSuggestionOptions;
 import com.google.mlkit.vision.common.InputImage;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -173,7 +174,20 @@ public class MainActivity extends AppCompatActivity {
                 }catch(Exception ex){runOnUiThread(()->showResult("ERROR AL IMPORTAR JSON\n"+ex.getMessage(),Color.RED));}
             });
         });
-        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build();
+        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAllPotentialBarcodes()
+            .setZoomSuggestionOptions(new ZoomSuggestionOptions.Builder(ratio -> {
+                if(activeCamera==null || !continuousEnabled || analyzing.get())return false;
+                androidx.camera.core.ZoomState state=activeCamera.getCameraInfo().getZoomState().getValue();
+                float maximum=state==null?2.5f:Math.min(2.5f,state.getMaxZoomRatio());
+                float requested=Math.max(1.0f,Math.min(maximum,ratio));
+                if(requested<=zoomRatio+0.08f)return false;
+                zoomRatio=requested;
+                applyCameraZoom();
+                return true;
+            }).setMaxSupportedZoomRatio(2.5f).build())
+            .build();
         scanner = BarcodeScanning.getClient(options);
         createUi();
         try {
@@ -704,7 +718,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1280,960))
+                    .setTargetResolution(new Size(1920,1080))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
