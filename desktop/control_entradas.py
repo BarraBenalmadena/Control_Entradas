@@ -1135,7 +1135,7 @@ def launch_gui():
                 messagebox.showinfo('Accesos restablecidos',
                     f'{total} accesos restablecidos en Windows. Debes sincronizar o renovar el JSON de los móviles.',parent=win)
             except Exception as ex:messagebox.showerror('Restablecimiento',str(ex),parent=win)
-        ttk.Button(actions,text='RESTABLECER ACCESOS',command=reset_confirmed).pack(side='left',padx=3)
+        ttk.Button(ticket_group,text='RESTABLECER ACCESOS',command=reset_confirmed).grid(row=2,column=0,columnspan=4,sticky='w',pady=(8,2))
         ttk.Button(actions,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
         ttk.Button(actions,text='VER DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
