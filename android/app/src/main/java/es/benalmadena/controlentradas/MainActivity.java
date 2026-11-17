@@ -848,7 +848,7 @@ public class MainActivity extends AppCompatActivity {
                     (seat.isEmpty()?"":"\n"+seat);
                 String finished=message;
                 boolean accepted="valid".equals(status);
-                runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();});
+                runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();zoomRatio=1.0f;applyCameraZoom();});
             }catch(Exception ex){
                 runOnUiThread(()->{String detail=ex.getMessage()==null?"Error de validación":ex.getMessage();showResult("NO AUTORIZADO\n"+detail,Color.RED);scanFeedback(false);say("Entrada no autorizada.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
