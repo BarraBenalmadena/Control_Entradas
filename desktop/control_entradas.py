@@ -182,7 +182,7 @@ def export_offline_event(event_id: str, target: Path):
     if not tickets: raise ValueError('No hay entradas enviadas a impresión. Imprime primero y luego exporta este JSON.')
     data={'version':1,'created_at':iso_now(),'event':dict(event),
           'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
-                      'used':bool(t['used_at']),'reserved':bool(t['reserved']),
+                      'used':bool(t['used_at']),'used_at':t['used_at'],'reserved':bool(t['reserved']),
                       'submitted_to_printer':bool(t['printed_at'])} for t in tickets]}
     data64=b64u(json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
     signature=PRIVATE_KEY.sign(data64.encode('ascii'),ec.ECDSA(hashes.SHA256()))
