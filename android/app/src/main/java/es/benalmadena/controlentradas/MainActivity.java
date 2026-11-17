@@ -110,6 +110,9 @@ public class MainActivity extends AppCompatActivity {
     private EditText rangeFrom, rangeTo, coordinatorIp, coordinatorPin;
     private TextView offlineStatus;
     private Button ticketListButton;
+    private TextView availableListView,usedListView;
+    private EditText ticketSearch;
+    private LinearLayout accessListPanel;
     private int validatedSession = 0;
     private Button coordinatorButton;
 
@@ -211,7 +214,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(layout);
         setContentView(scroll);
         layout.addView(text("CONTROL DE ENTRADAS", 23, true));
-        layout.addView(text("Escuela Municipal de Música y Danza · v1.3 · diagnóstico QR", 12, false));
+        layout.addView(text("Escuela Municipal de Música y Danza · v1.8 · historial de accesos", 12, false));
         connectionView = text("Sin conexión · Vincula este móvil al servidor Windows", 13, true);
         layout.addView(connectionView);
         serverInput = new EditText(this);
@@ -328,6 +331,41 @@ public class MainActivity extends AppCompatActivity {
         counterView = text("", 14, false);
         counterView.setGravity(Gravity.CENTER);
         layout.addView(counterView);
+        accessListPanel=new LinearLayout(this);
+        accessListPanel.setOrientation(LinearLayout.VERTICAL);
+        accessListPanel.addView(text("ENTRADAS Y CONTROL DE ACCESOS",16,true));
+        ticketSearch=new EditText(this);
+        ticketSearch.setSingleLine(true);
+        ticketSearch.setHint("Buscar número o butaca...");
+        accessListPanel.addView(ticketSearch);
+        ticketSearch.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence v,int start,int count,int after){}
+            public void onTextChanged(CharSequence v,int start,int before,int count){refreshAccessLists();}
+            public void afterTextChanged(android.text.Editable e){}
+        });
+        accessListPanel.addView(text("DISPONIBLES (SIN VALIDAR)",14,true));
+        ScrollView pendingScroll=new ScrollView(this);
+        pendingScroll.setNestedScrollingEnabled(true);
+        availableListView=text("Importa el JSON para ver las entradas.",13,false);
+        pendingScroll.addView(availableListView);
+        accessListPanel.addView(pendingScroll,new LinearLayout.LayoutParams(-1,dp(165)));
+        accessListPanel.addView(text("VALIDADAS · FECHA Y HORA",14,true));
+        ScrollView approvedScroll=new ScrollView(this);
+        approvedScroll.setNestedScrollingEnabled(true);
+        usedListView=text("Todavía no hay accesos.",13,false);
+        approvedScroll.addView(usedListView);
+        accessListPanel.addView(approvedScroll,new LinearLayout.LayoutParams(-1,dp(165)));
+        Button resetLocal=button("RESTABLECER ACCESOS DE ESTE MÓVIL");
+        resetLocal.setOnClickListener(v->new AlertDialog.Builder(this)
+            .setTitle("Restablecer accesos locales")
+            .setMessage("Se eliminarán las validaciones locales de esta función y sus horas. El JSON firmado no cambia, y los accesos ya comunicados a Windows u otros móviles NO se restablecen. Esta operación puede permitir reutilizar entradas: úsala solo en pruebas.")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("RESTABLECER",(d,w)->{
+                try {int n=offline.resetLocalAccesses();updateOfflineCounter();showResult(n+" accesos locales restablecidos",Color.rgb(130,82,0));}
+                catch(Exception ex){showResult("NO SE PUDO RESTABLECER: "+ex.getMessage(),Color.RED);}
+            }).show());
+        accessListPanel.addView(resetLocal);
+        layout.addView(accessListPanel);
         emergencyMode = new CheckBox(this);
         emergencyMode.setText("Contingencia sin red (solo UN móvil)");
         emergencyMode.setChecked(false);
@@ -355,7 +393,7 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
         fastPanel.setBackgroundColor(Color.WHITE);
         View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
-                offlineStatus,voiceToggle,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,queueView};
+                offlineStatus,voiceToggle,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,accessListPanel,queueView};
         for(View view:quick) layout.removeView(view);
         LinearLayout settingsPanel=new LinearLayout(this);
         settingsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -418,8 +456,37 @@ public class MainActivity extends AppCompatActivity {
         }
         counterView.setText("JSON importado: "+items.length()+" entradas  ·  Validadas: "+used+
                 "  ·  Pendientes: "+(items.length()-used));
+        refreshAccessLists();
     }
 
+    private void refreshAccessLists(){
+        if(availableListView==null || usedListView==null || offline==null || !offline.hasPackage())return;
+        JSONArray items=offline.ticketList();
+        String q=ticketSearch==null?"":ticketSearch.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+        StringBuilder available=new StringBuilder(),approved=new StringBuilder();
+        int pending=0,used=0;
+        for(int i=0;i<items.length();i++){
+            JSONObject t=items.optJSONObject(i);if(t==null)continue;
+            String num=String.format(java.util.Locale.US,"%04d",t.optInt("number"));
+            String seat=t.optString("seat","");
+            if("null".equalsIgnoreCase(seat))seat="";
+            if(!q.isEmpty() && !num.contains(q) && !seat.toLowerCase(java.util.Locale.ROOT).contains(q))continue;
+            if(t.optBoolean("used")){
+                used++;approved.append("✓ ").append(num);
+                if(!seat.isEmpty())approved.append(" · ").append(seat);
+                String time=t.optString("used_at","");
+                if(!time.isEmpty() && !"null".equalsIgnoreCase(time))approved.append(" · ").append(time);
+                else approved.append(" · Hora anterior no disponible");
+                approved.append("\n");
+            }else{
+                pending++;available.append("○ ").append(num);
+                if(!seat.isEmpty())available.append(" · ").append(seat);
+                available.append(" · DISPONIBLE\n");
+            }
+        }
+        availableListView.setText(pending==0?"No hay entradas pendientes.":available.toString());
+        usedListView.setText(used==0?"Todavía no hay accesos registrados.":approved.toString());
+    }
     private void shareSignedEvent(){
         try{
             if(!offline.hasPackage())throw new Exception("Importa primero un evento firmado");
@@ -726,10 +793,12 @@ public class MainActivity extends AppCompatActivity {
                 }else throw new Exception("Modo de validación desconocido");
                 String status=response.optString("status","invalid");
                 String message=response.isNull("message")?"":response.optString("message","");
+                String seat=response.isNull("seat")?"":response.optString("seat","");
+                if("null".equalsIgnoreCase(seat))seat="";
                 if(message==null || message.trim().isEmpty() || "null".equalsIgnoreCase(message.trim()))
                     message="valid".equals(status)?"ENTRADA VÁLIDA":"Entrada rechazada. Comprueba la función y el JSON importado.";
                 if("valid".equals(status))message+="\nN.º "+response.optInt("number")+
-                    (response.optString("seat","").isEmpty()?"":"\n"+response.optString("seat"));
+                    (seat.isEmpty()?"":"\n"+seat);
                 String finished=message;
                 boolean accepted="valid".equals(status);
                 runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();});
