@@ -179,8 +179,8 @@ public class MainActivity extends AppCompatActivity {
             .enableAllPotentialBarcodes()
             .setZoomSuggestionOptions(new ZoomSuggestionOptions.Builder(ratio -> {
                 if(activeCamera==null || !continuousEnabled || analyzing.get())return false;
-                androidx.camera.core.ZoomState state=activeCamera.getCameraInfo().getZoomState().getValue();
-                float maximum=state==null?2.5f:Math.min(2.5f,state.getMaxZoomRatio());
+                androidx.camera.core.ZoomState cameraZoomState=activeCamera.getCameraInfo().getZoomState().getValue();
+                float maximum=cameraZoomState==null?2.5f:Math.min(2.5f,cameraZoomState.getMaxZoomRatio());
                 float requested=Math.max(1.0f,Math.min(maximum,ratio));
                 if(requested<=zoomRatio+0.08f)return false;
                 zoomRatio=requested;
