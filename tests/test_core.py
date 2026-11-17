@@ -39,6 +39,20 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertEqual(app.validate(ticket["qr"],e,"movil1")["status"], "valid")
         self.assertEqual(app.validate(ticket["qr"],e,"movil2")["status"], "used")
         self.assertEqual(app.validate(ticket["qr"]+"z",e,"movil2")["status"], "invalid")
+    def test_code128_fallback_and_double_use(self):
+        e=app.create_event("Acceso alternativo","2027-04-12T19:00","libre",2)
+        event,ticket=app.get_ticket(e,1)
+        barcode=ticket_printer.barcode_ticket_value(ticket["id"])
+        self.assertEqual(len(barcode),16)
+        self.assertTrue(barcode.isdigit())
+        rendered=ticket_printer.render_landscape_ticket(
+            event,ticket,80,{"plantilla":ticket_printer.TEMPLATES[19]})
+        self.assertEqual(rendered.height,576)
+        self.assertGreater(ticket_printer._code128_image(barcode,300,35).width,120)
+        self.assertEqual(app.validate(barcode,e,"reader-A")["status"],"valid")
+        self.assertEqual(app.validate(ticket["qr"],e,"reader-B")["status"],"used")
+        self.assertEqual(app.validate("0000000000000000",e,"reader-B")["status"],"invalid")
+
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
         self.assertEqual([x for x in app.list_events() if x["id"] == e][0]["capacity"],6)
