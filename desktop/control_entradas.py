@@ -1254,6 +1254,16 @@ def launch_gui():
 
 
 if __name__ == "__main__":
+    if "--check-package" in sys.argv:
+        # Ejercita el mismo import dinámico que falló en el ejecutable v2.3.
+        from reportlab.graphics.barcode import createBarcodeDrawing
+        from reportlab.graphics.barcode.code128 import Code128
+        code=Code128("0000000000000123",barWidth=1,barHeight=40)
+        code.validate();code.encode();code.decompose()
+        if not code.decomposed: raise RuntimeError("Code128 no disponible")
+        createBarcodeDrawing("Code128",value="0000000000000123")
+        print("EMPAQUETADO_OK",flush=True)
+        raise SystemExit(0)
     init_db()
     if "--serve" in sys.argv:
         print(f"Control de Entradas v{VERSION} · http://0.0.0.0:{PORT} · PIN {ACCESS_PIN}")
