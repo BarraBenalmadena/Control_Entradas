@@ -309,6 +309,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         cameraView = new PreviewView(this);
+        cameraView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
         cameraView.setVisibility(View.GONE);
         layout.addView(cameraView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(420)));
         LinearLayout zoomRow = new LinearLayout(this);
@@ -703,7 +704,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1920,1080))
+                    .setTargetResolution(new Size(1280,960))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -716,11 +717,14 @@ public class MainActivity extends AppCompatActivity {
                             String candidate=null;
                             for(Barcode barcode:barcodes){
                                 String value=barcode.getRawValue();
-                                if(value!=null && !value.trim().isEmpty()){candidate=value.trim();break;}
+                                if(value==null || value.trim().isEmpty())continue;
+                                value=value.trim();
+                                if(value.startsWith("CE1.")){candidate=value;break;}
+                                if(candidate==null)candidate=value;
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
-                                if(now-lastQrVisibleMs>250)blockedQr="";
+                                if(now-lastQrVisibleMs>400)blockedQr="";
                                 return;
                             }
                             boolean same=candidate.equals(blockedQr);
