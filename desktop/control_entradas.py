@@ -227,6 +227,20 @@ def verify_offline_file(path: Path):
     return json.loads(unb64u(package['payload']))
 
 
+def reset_event_accesses(event_id: str) -> int:
+    """Restablece accesos del servidor Windows, sin tocar tickets ni números QR."""
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        try:
+            count=db.execute('SELECT COUNT(*) FROM tickets WHERE event_id=? AND used_at IS NOT NULL',(event_id,)).fetchone()[0]
+            db.execute('UPDATE tickets SET used_at=NULL, used_by=NULL WHERE event_id=?',(event_id,))
+            db.commit()
+            return count
+        except Exception:
+            db.rollback()
+            raise
+
+
 def delete_event(event_id: str) -> dict:
     """Eliminación transaccional irreversible de función y todos sus tickets.
 
@@ -1105,6 +1119,23 @@ def launch_gui():
                     win.after(0,fail)
             threading.Thread(target=worker,daemon=True).start()
 
+        def reset_confirmed():
+            with connect() as db:
+                used=db.execute('SELECT COUNT(*) FROM tickets WHERE event_id=? AND used_at IS NOT NULL',(event_id,)).fetchone()[0]
+            if not messagebox.askyesno('Restablecer entradas validadas',
+                f'Se van a restablecer {used} entradas utilizadas de esta función en Windows.\n'
+                'Sus QR volverán a dar acceso en el servidor.\n\n'
+                'IMPORTANTE: los móviles con JSON descargados previamente mantienen sus propios accesos '
+                'y NO se restablecen automáticamente. Para pruebas, restablece cada móvil también.\n\n'
+                '¿Quieres continuar?',parent=win):
+                return
+            try:
+                total=reset_event_accesses(event_id)
+                note.set(f'{total} accesos restablecidos en Windows. Se conservan las entradas impresas.')
+                messagebox.showinfo('Accesos restablecidos',
+                    f'{total} accesos restablecidos en Windows. Debes sincronizar o renovar el JSON de los móviles.',parent=win)
+            except Exception as ex:messagebox.showerror('Restablecimiento',str(ex),parent=win)
+        ttk.Button(actions,text='RESTABLECER ACCESOS',command=reset_confirmed).pack(side='left',padx=3)
         ttk.Button(actions,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
         ttk.Button(actions,text='VER DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
