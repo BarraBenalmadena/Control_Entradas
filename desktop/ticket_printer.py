@@ -300,6 +300,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # Posiciones de logos con áreas reservadas. Cada plantilla tiene una disposición inicial.
     requested = design.get('posicion_logos','Según plantilla')
     logo_pos = (DEFAULT_LOGO_POSITIONS[kind] if requested=='Según plantilla' else requested)
+    # Evitar escudos diminutos encima de la cabecera en la vista por defecto.
+    if requested=='Según plantilla' and logo_pos=='Centrados':
+        logo_pos='Extremos'
     if logo_pos not in LOGO_POSITIONS:
         raise ValueError('Posición de logotipos no reconocida.')
     logo_setting=design.get('tamano_logos','Grandes')
