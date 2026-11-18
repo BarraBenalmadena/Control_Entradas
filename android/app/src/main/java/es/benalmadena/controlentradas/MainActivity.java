@@ -181,13 +181,13 @@ public class MainActivity extends AppCompatActivity {
             .setZoomSuggestionOptions(new ZoomSuggestionOptions.Builder(ratio -> {
                 if(activeCamera==null || !continuousEnabled || analyzing.get())return false;
                 androidx.camera.core.ZoomState cameraZoomState=activeCamera.getCameraInfo().getZoomState().getValue();
-                float maximum=cameraZoomState==null?2.5f:Math.min(1.8f,cameraZoomState.getMaxZoomRatio());
+                float maximum=cameraZoomState==null?2.5f:Math.min(1.4f,cameraZoomState.getMaxZoomRatio());
                 float requested=Math.max(1.0f,Math.min(maximum,ratio));
                 if(requested<=zoomRatio+0.08f)return false;
                 zoomRatio=requested;
                 applyCameraZoom();
                 return true;
-            }).setMaxSupportedZoomRatio(1.8f).build())
+            }).setMaxSupportedZoomRatio(1.4f).build())
             .build();
         scanner = BarcodeScanning.getClient(options);
         createUi();
@@ -761,7 +761,7 @@ public class MainActivity extends AppCompatActivity {
                 Preview preview=new Preview.Builder().build();
                 preview.setSurfaceProvider(cameraView.getSurfaceProvider());
                 ImageAnalysis analysis=new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(1920,1080))
+                    .setTargetResolution(new Size(1280,960))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build();
                 analysis.setAnalyzer(cameraExecutor, image->{
@@ -781,7 +781,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                             long now=SystemClock.elapsedRealtime();
                             if(candidate==null){
-                                if(now-lastQrVisibleMs>400)blockedQr="";
+                                if(now-lastQrVisibleMs>260)blockedQr="";
                                 return;
                             }
                             String scanKey=scanIdentity(candidate);
