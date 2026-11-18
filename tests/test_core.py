@@ -55,8 +55,8 @@ class ControlEntradasTests(unittest.TestCase):
             g=ticket_printer.geometry(paper_width,None,{})
             body_left=g["L"]+round(g["usable"]*0.034)
             body_right=g["L"]+round(g["usable"]*0.966)
-            bar_y=g["T"]+round(521*g["sx"])
-            bar_h=max(18,round(565*g["sx"])-round(521*g["sx"]))
+            bar_y=g["T"]+round(531*g["sx"])
+            bar_h=max(18,round(567*g["sx"])-round(531*g["sx"]))
             code=ticket_printer._code128_image(barcode,body_right-body_left,bar_h)
             self.assertGreaterEqual(code.width,250)
             exact_x=(body_left+body_right-code.width)//2
