@@ -329,7 +329,7 @@ class TenDesignsAndMarginTests(unittest.TestCase):
         e=app.create_event('Gala de Danza de la Escuela Municipal','2027-12-20T19:00','libre',1)
         event,ticket=app.get_ticket(e,1)
         images=[]
-        self.assertEqual(len(ticket_printer.TEMPLATES),34)
+        self.assertEqual(len(ticket_printer.TEMPLATES),36)
         for template in ticket_printer.TEMPLATES:
             for position in ticket_printer.LOGO_POSITIONS:
                 with self.subTest(template=template,logos=position):
@@ -341,7 +341,7 @@ class TenDesignsAndMarginTests(unittest.TestCase):
                     self.assertEqual(img.size,(1080,576))
                     assert_qr_not_deformed(self,img,ticket['qr'],80,design)
                     if position=='Según plantilla': images.append(img.tobytes())
-        self.assertEqual(len(set(images)),34,'Las treinta y cuatro plantillas deben ser composiciones distintas')
+        self.assertEqual(len(set(images)),36,'Las treinta y seis plantillas deben ser composiciones distintas')
 
     def test_margins_change_physical_whitespace_and_keep_ticket_length(self):
         e=app.create_event('Ensayo de márgenes','2027-10-24T19:00','libre',1)
