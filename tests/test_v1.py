@@ -63,7 +63,7 @@ class V1Tests(unittest.TestCase):
             self.assertEqual([x['number'] for x in latest],list(range(41,51)))
 
     def test_sixteen_templates_and_qr(self):
-        self.assertEqual(len(ticket_printer.TEMPLATES),34)
+        self.assertEqual(len(ticket_printer.TEMPLATES),36)
         eid=app.create_event('Gala','2027-03-12T19:00','libre',1)
         ev,t=app.get_ticket(eid,1)
         for label in ticket_printer.TEMPLATES:
