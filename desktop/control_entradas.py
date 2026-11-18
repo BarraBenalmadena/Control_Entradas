@@ -799,7 +799,8 @@ def launch_gui():
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
-            'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')), 
+            'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')),
+            'estilo_avisos':tk.StringVar(value=config.get('estilo_avisos','Según modelo')), 
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
             'posicion_logos':tk.StringVar(value=config.get('posicion_logos','Según plantilla')),
             'margen_izquierdo_mm':tk.StringVar(value=str(config.get('margen_izquierdo_mm','2'))),
@@ -883,6 +884,7 @@ def launch_gui():
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
             'modo_impresion':'Impresión térmica: normal o blanca (menos tinta)',
+            'estilo_avisos':'Avisos de acceso (se aplica a TODOS los diseños)',
             'margen_izquierdo_mm':'Margen izquierdo / inicio (mm)',
             'margen_derecho_mm':'Margen derecho / corte (mm)',
             'margen_superior_mm':'Margen superior (mm)',
@@ -905,6 +907,7 @@ def launch_gui():
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
             'modo_impresion':('Normal','Blanco económico'),
+            'estilo_avisos':('Según modelo','B · Recuadro','D · Separadores','Clásico'),
             'tamano_logos':ticket_printer.LOGO_SIZES,
             'margen_izquierdo_mm':margin_choices,
             'margen_derecho_mm':margin_choices,
@@ -1056,7 +1059,15 @@ def launch_gui():
                            command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
                 ttk.Button(gallery_controls,text='BLANCO ECONÓMICO',
                            command=lambda:gallery_style('Blanco económico')).pack(side='left',padx=5)
-                ttk.Label(gallery_controls,text='Mostrando: '+variables['modo_impresion'].get()).pack(side='left',padx=9)
+                def gallery_notices(style):
+                    variables['estilo_avisos'].set(style)
+                    gallery_win.destroy()
+                    gallery()
+                ttk.Button(gallery_controls,text='AVISOS B · RECUADRO',
+                           command=lambda:gallery_notices('B · Recuadro')).pack(side='left',padx=5)
+                ttk.Button(gallery_controls,text='AVISOS D · SEPARADORES',
+                           command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
+                ttk.Label(gallery_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
                 # Mismo bitmap que se envía a la impresora: miniatura centrada,
                 # sin crops y sin cambiar la relación de aspecto.
                 for i,template in enumerate(ticket_printer.TEMPLATES):
