@@ -196,6 +196,8 @@ TEMPLATES = (
     '38 · Diagonal blanca',
     '39 · Escenario claro',
     '40 · Cartel editorial blanco',
+    '41 · Avisos en recuadro (B)',
+    '42 · Avisos con divisores (D)',
 )
 IMAGE_FITS = ('Rellenar y recortar', 'Mostrar completa')
 LOGO_SIZES = ('Pequeños', 'Medianos', 'Grandes')
@@ -214,6 +216,7 @@ DEFAULT_LOGO_POSITIONS = (
     'Extremos', 'Centrados', 'Extremos', 'Apilados a la izquierda',
     'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos', 'Extremos',
     'Extremos', 'Extremos', 'Extremos', 'Extremos',
+    'Extremos', 'Extremos',
 )
 
 
@@ -665,23 +668,48 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(label,(25,317,970,380),46,lines=2)
         bodytext(day+'  ·  '+when,(24,386,973,440),33,lines=1,factor=date_factor)
         bodytext(place,(29,445,969,473),21,lines=1)
-    hline(490)
+    elif kind==34:  # 41: Propuesta B, sin adorno que tape el texto
+        bodytext(label,(25,141,974,236),51,lines=2,min_size=16)
+        bodytext(day+'  ·  '+when,(25,242,972,292),40,lines=1,factor=date_factor)
+        bodytext(place,(28,301,970,343),25,lines=2)
+    elif kind==35:  # 42: Propuesta D, jerarquía sencilla
+        bodytext(label,(24,141,975,233),53,lines=2,min_size=16)
+        bodytext(day+'   '+when,(28,245,970,295),40,lines=1,factor=date_factor)
+        bodytext(place,(28,305,970,345),25,lines=2)
+    # Los modelos B y D dedican un recuadro propio a las condiciones,
+    # totalmente separado del Code128 de lectura rápida.
+    if kind not in (34,35):
+        hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
     else:
         notes=('RESPETE SU FILA Y BUTACA ASIGNADAS',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
-    bodytext(notes[0],(15,489,985,505),16,lines=1,min_size=8)
-    bodytext(notes[1],(15,507,985,523),15,lines=1,min_size=8)
+    if kind==34:  # Propuesta B: avisos en cuadro central
+        border=br(15,353,984,476)
+        draw.rounded_rectangle(border,radius=sz(9),outline=(125,125,125),width=stroke)
+        draw.line((br(30,410,970,410)[0],y(410),br(30,410,970,410)[2],y(410)),
+                  fill=(175,175,175),width=stroke)
+        bodytext(notes[0],(28,360,972,406),22,lines=2,min_size=13)
+        bodytext(notes[1],(30,414,969,471),20,lines=2,min_size=12)
+    elif kind==35:  # Propuesta D: avisos independientes con divisores
+        for yy in (354,408,476): hline(yy,20,980)
+        bodytext(notes[0],(35,361,961,403),22,lines=2,min_size=13)
+        bodytext(notes[1],(35,414,961,471),20,lines=2,min_size=12)
+    else:
+        bodytext(notes[0],(15,489,985,505),16,lines=1,min_size=8)
+        bodytext(notes[1],(15,507,985,523),15,lines=1,min_size=8)
     # Code128 ocupa una franja ancha del CUERPO PRINCIPAL, no el talón
     # estrecho del QR. La versión anterior comprimía cada barra a 1 píxel.
     # Aquí las barras son de 3-5 píxeles y permanecen sin interpolar.
     area_left,area_right=br(34,519,966,568)[0],br(34,519,966,568)[2]
+    barcode_top=499 if kind in (34,35) else 531
+    barcode_bottom=566 if kind in (34,35) else 567
     barcode=_code128_image(barcode_ticket_value(ticket['id']),
-                           area_right-area_left,max(18,y(567)-y(531)))
+                           area_right-area_left,max(18,y(barcode_bottom)-y(barcode_top)))
     bar_x=(area_left+area_right-barcode.width)//2
-    im.paste(barcode,(bar_x,y(531)))
+    im.paste(barcode,(bar_x,y(barcode_top)))
 
     # Talón del QR inalterado; nunca interpolar el código.
     stub_left, stub_right = divider+xu(8), W-g['right_limit']-xu(4)
