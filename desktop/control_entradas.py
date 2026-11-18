@@ -767,7 +767,7 @@ def launch_gui():
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='TICKETS HORIZONTALES · 34 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='TICKETS HORIZONTALES · 36 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -878,7 +878,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (34 modelos)',
+            'plantilla':'Diseño (36 modelos)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
