@@ -676,9 +676,32 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(label,(24,141,975,233),53,lines=2,min_size=16)
         bodytext(day+'   '+when,(28,245,970,295),40,lines=1,factor=date_factor)
         bodytext(place,(28,305,970,345),25,lines=2)
-    # Los modelos B y D dedican un recuadro propio a las condiciones,
-    # totalmente separado del Code128 de lectura rápida.
-    if kind not in (34,35):
+    # Posición de los avisos independiente del diseño gráfico elegido:
+    # se aplica a las 36 plantillas sin tapar textos, fotografías ni QR.
+    setting=str(design.get('estilo_avisos','Según modelo'))
+    if setting not in ('Según modelo','B · Recuadro','D · Separadores','Clásico'):
+        setting='Según modelo'
+    if setting=='Según modelo':
+        avisos='D' if kind==35 else 'B'
+    elif setting.startswith('B ·'):
+        avisos='B'
+    elif setting.startswith('D ·'):
+        avisos='D'
+    else:
+        avisos='Clásico'
+    if avisos in ('B','D') and kind not in (34,35):
+        # Se comprime únicamente la composición del espectáculo. El encabezado,
+        # el talón QR y el Code128 conservan sus dimensiones y píxeles.
+        x0,x1=L+sz(3),divider-sz(4)
+        old_top,old_bottom=y(125),y(486)
+        new_bottom=y(347)
+        artwork=im.crop((x0,old_top,x1,old_bottom))
+        artwork=artwork.resize((x1-x0,new_bottom-old_top),Image.Resampling.LANCZOS)
+        draw.rectangle((x0,old_top,x1-1,y(487)),fill='white')
+        im.paste(artwork,(x0,old_top))
+        draw.line((L+sz(5),y(350),divider-sz(6),y(350)),
+                  fill=(185,185,185),width=stroke)
+    if avisos=='Clásico':
         hline(490)
     if event['mode']=='libre':
         notes=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
@@ -686,14 +709,14 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     else:
         notes=('RESPETE SU FILA Y BUTACA ASIGNADAS',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
-    if kind==34:  # Propuesta B: avisos en cuadro central
+    if avisos=='B':  # Propuesta B en cualquier modelo
         border=br(15,353,984,476)
         draw.rounded_rectangle(border,radius=sz(9),outline=(125,125,125),width=stroke)
         draw.line((br(30,410,970,410)[0],y(410),br(30,410,970,410)[2],y(410)),
                   fill=(175,175,175),width=stroke)
         bodytext(notes[0],(28,360,972,406),22,lines=2,min_size=13)
         bodytext(notes[1],(30,414,969,471),20,lines=2,min_size=12)
-    elif kind==35:  # Propuesta D: avisos independientes con divisores
+    elif avisos=='D':  # Propuesta D en cualquier modelo
         for yy in (354,408,476): hline(yy,20,980)
         bodytext(notes[0],(35,361,961,403),22,lines=2,min_size=13)
         bodytext(notes[1],(35,414,961,471),20,lines=2,min_size=12)
@@ -704,8 +727,8 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # estrecho del QR. La versión anterior comprimía cada barra a 1 píxel.
     # Aquí las barras son de 3-5 píxeles y permanecen sin interpolar.
     area_left,area_right=br(34,519,966,568)[0],br(34,519,966,568)[2]
-    barcode_top=499 if kind in (34,35) else 531
-    barcode_bottom=566 if kind in (34,35) else 567
+    barcode_top=499 if avisos in ('B','D') else 531
+    barcode_bottom=566 if avisos in ('B','D') else 567
     barcode=_code128_image(barcode_ticket_value(ticket['id']),
                            area_right-area_left,max(18,y(barcode_bottom)-y(barcode_top)))
     bar_x=(area_left+area_right-barcode.width)//2
