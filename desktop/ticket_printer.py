@@ -145,9 +145,11 @@ def _code128_image(value: str, max_width: int, height: int) -> Image.Image:
     code.encode()
     code.decompose()
     units=sum(ord(c.lower())-96 for c in code.decomposed)
-    quiet=12
-    module=min(4,(max_width-quiet*2)//units)
+    # Code128 exige al menos diez módulos blancos por lado: no reducir
+    # las quiet zones ni interpolar la trama.
+    module=min(5,max_width//(units+20))
     if module < 1: raise ValueError("Sin espacio suficiente para código de barras.")
+    quiet=module*10
     width=units*module+quiet*2
     im=Image.new('RGB',(width,height),'white')
     d=ImageDraw.Draw(im)
@@ -669,8 +671,15 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     else:
         notes=('RESPETE SU FILA Y BUTACA ASIGNADAS',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
-    bodytext(notes[0],(10,495,990,524),17,lines=1,min_size=9)
-    bodytext(notes[1],(10,525,990,558),16,lines=1,min_size=9)
+    bodytext(notes[0],(10,494,990,513),16,lines=1,min_size=8)
+    # Code128 ocupa una franja ancha del CUERPO PRINCIPAL, no el talón
+    # estrecho del QR. La versión anterior comprimía cada barra a 1 píxel.
+    # Aquí las barras son de 3-5 píxeles y permanecen sin interpolar.
+    area_left,area_right=br(34,519,966,568)[0],br(34,519,966,568)[2]
+    barcode=_code128_image(barcode_ticket_value(ticket['id']),
+                           area_right-area_left,max(18,y(565)-y(521)))
+    bar_x=(area_left+area_right-barcode.width)//2
+    im.paste(barcode,(bar_x,y(521)))
 
     # Talón del QR inalterado; nunca interpolar el código.
     stub_left, stub_right = divider+xu(8), W-g['right_limit']-xu(4)
@@ -686,13 +695,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     im.paste(qr,(qx,qy))
     caption_y=qy+qr.height+sz(4)
     text_box('ESCANEAR QR',(stub_left,y(423),stub_right,y(443)),14,lines=1,min_size=9)
-    # Reservar distancia blanca real antes del Code128 para evitar solapes.
-    # Barcode alternativo, autenticado por inclusión en evento firmado/servidor.
-    # Ubicar en la franja entre descripción QR y "1 PERSONA".
-    barcode=_code128_image(barcode_ticket_value(ticket['id']),
-                           stub_right-stub_left-xu(8), max(13,y(485)-y(449)))
-    im.paste(barcode,((stub_left+stub_right-barcode.width)//2,y(449)))
-    text_box('1 PERSONA',(stub_left,y(486),stub_right,y(529)),26,lines=1,min_size=13)
+    text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
+             (stub_left,y(451),stub_right,y(481)),16,lines=2,min_size=9)
+    text_box('1 PERSONA',(stub_left,y(492),stub_right,y(531)),26,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(540),stub_right,y(563)),14,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 
