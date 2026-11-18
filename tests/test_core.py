@@ -86,6 +86,32 @@ class ControlEntradasTests(unittest.TestCase):
                                                bar_y+bar_h)).tobytes(),actual.tobytes(),
                                  "No se debe deformar el Code128 en "+style)
 
+    def test_gray_models_prominent_event_date_and_barcode(self):
+        event_id=app.create_event("Concierto de Navidad","2027-04-12T19:00","libre",1)
+        event,ticket=app.get_ticket(event_id,1)
+        for model in (23,24,25,29):
+            for style in ("B · Recuadro","D · Separadores"):
+                design={"plantilla":ticket_printer.TEMPLATES[model],
+                        "estilo_avisos":style}
+                ticket_image=ticket_printer.render_landscape_ticket(event,ticket,80,design)
+                g=ticket_printer.geometry(80,None,design)
+                first=g["L"]+round(g["usable"]*.034)
+                last=g["L"]+round(g["usable"]*.966)
+                barcode=ticket_printer.barcode_ticket_value(ticket["id"])
+                bar_top=g["T"]+round(499*g["sx"])
+                bar_height=max(18,round(566*g["sx"])-round(499*g["sx"]))
+                expected=ticket_printer._code128_image(barcode,last-first,bar_height)
+                x=(first+last-expected.width)//2
+                self.assertEqual(ticket_image.crop((x,bar_top,x+expected.width,
+                              bar_top+expected.height)).tobytes(),expected.tobytes())
+                # Numbers must be visible on gray background even with notices.
+                left=g["L"]+round(g["usable"]*.018)
+                right=g["L"]+round(g["usable"]*.30)
+                top=g["T"]+round(155*g["sx"])
+                bottom=g["T"]+round(326*g["sx"])
+                region=ticket_image.crop((left,top,right,bottom)).convert("L")
+                self.assertLess(region.getextrema()[0],55)
+
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
         self.assertEqual([x for x in app.list_events() if x["id"] == e][0]["capacity"],6)
