@@ -107,6 +107,11 @@ def init_db():
                 submitted_at TEXT NOT NULL,
                 FOREIGN KEY(ticket_id) REFERENCES tickets(id)
             );
+            CREATE TABLE IF NOT EXISTS event_last_print_batch (
+                event_id TEXT PRIMARY KEY REFERENCES events(id),
+                numbers_json TEXT NOT NULL,
+                submitted_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS ticket_design (
                 event_id TEXT PRIMARY KEY REFERENCES events(id),
                 data TEXT NOT NULL
@@ -163,12 +168,18 @@ def list_events():
 
 def record_print_submission(event_id: str, numbers):
     """Registra entradas enviadas a la cola de la impresora (no confirma salida física)."""
+    current=sorted({int(n) for n in numbers})
+    if not current: raise ValueError('Lote de impresión vacío')
     with connect() as db:
-        for number in numbers:
-            row=db.execute('SELECT id FROM tickets WHERE event_id=? AND number=?',(event_id,int(number))).fetchone()
-            if row:
-                db.execute('INSERT OR REPLACE INTO ticket_print_log(ticket_id,submitted_at) VALUES (?,?)',
-                           (row['id'],iso_now()))
+        db.execute('BEGIN IMMEDIATE')
+        for number in current:
+            row=db.execute('SELECT id FROM tickets WHERE event_id=? AND number=?',(event_id,number)).fetchone()
+            if not row: raise ValueError(f'Entrada {number} inexistente')
+            db.execute('INSERT OR REPLACE INTO ticket_print_log(ticket_id,submitted_at) VALUES (?,?)',
+                       (row['id'],iso_now()))
+        db.execute('INSERT OR REPLACE INTO event_last_print_batch(event_id,numbers_json,submitted_at) VALUES (?,?,?)',
+                   (event_id,json.dumps(current),iso_now()))
+        db.commit()
 
 
 def export_offline_event(event_id: str, target: Path):
@@ -180,7 +191,13 @@ def export_offline_event(event_id: str, target: Path):
     with connect() as db:
         event=db.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if event is None:raise ValueError('La función no existe.')
-        tickets=db.execute("SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? AND p.submitted_at IS NOT NULL ORDER BY t.number",(event_id,)).fetchall()
+        batch=db.execute('SELECT numbers_json FROM event_last_print_batch WHERE event_id=?',(event_id,)).fetchone()
+        if not batch:
+            raise ValueError('No hay último lote registrado. Imprime las entradas y después exporta el JSON.')
+        numbers=json.loads(batch['numbers_json'])
+        if not numbers: raise ValueError('El último lote de impresión está vacío.')
+        placeholders=','.join('?' for _ in numbers)
+        tickets=db.execute(f"SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? AND t.number IN ({placeholders}) ORDER BY t.number",(event_id,*numbers)).fetchall()
     if not tickets: raise ValueError('No hay entradas enviadas a impresión. Imprime primero y luego exporta este JSON.')
     data={'version':1,'created_at':iso_now(),'event':dict(event),
           'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
@@ -257,6 +274,7 @@ def delete_event(event_id: str) -> dict:
                 raise ValueError('La función ya no existe.')
             used = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=? AND used_at IS NOT NULL', (event_id,)).fetchone()[0]
             issued = conn.execute('SELECT COUNT(*) FROM tickets WHERE event_id=?', (event_id,)).fetchone()[0]
+            conn.execute('DELETE FROM event_last_print_batch WHERE event_id=?', (event_id,))
             conn.execute('DELETE FROM ticket_design WHERE event_id=?', (event_id,))
             conn.execute('DELETE FROM ticket_print_log WHERE ticket_id IN (SELECT id FROM tickets WHERE event_id=?)', (event_id,))
             conn.execute('DELETE FROM tickets WHERE event_id=?', (event_id,))
