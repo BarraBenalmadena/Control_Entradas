@@ -431,11 +431,11 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day,(28,275,975,350),44,lines=1,min_size=18,factor=date_factor)
         bodytext(when,(28,348,975,421),58,lines=1,min_size=20,factor=date_factor)
         bar=br(36,437,965,482)
-        draw.rectangle(bar,fill='white' if blanco else 'black')
-        text_box(place,bar,23,lines=1,min_size=11,color='black' if blanco else 'white')
+        draw.rectangle(bar,fill='white' if blanco else (207,207,207))
+        text_box(place,bar,23,lines=1,min_size=11,color='black')
     elif kind==4:  # Editorial
         photo((604,126,995,481),frame=True)
-        draw.rectangle(br(8,132,22,474),fill='white' if blanco else 'black')
+        draw.rectangle(br(8,132,22,474),fill='white' if blanco else (207,207,207))
         event_text(37,588 if poster else 980,title_sz=47)
     elif kind==5:  # Mosaico
         photo((5,126,259,480),frame=True)
@@ -453,12 +453,12 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         event_text(290,955,title_y=(162,260),day_y=(263,322),time_y=(323,386),place_y=(388,449),title_sz=39)
     elif kind==8:  # Tríptico: tres cuadros y divisor
         photo((8,125,336,483),frame=True)
-        draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='white' if blanco else 'black',width=stroke)
+        draw.line((br(341,136,341,470)[0],y(136),br(341,136,341,470)[0],y(470)),fill='white' if blanco else (207,207,207),width=stroke)
         event_text(351,982,title_y=(131,239),day_y=(249,306),time_y=(313,399),place_y=(404,474),title_sz=47)
     elif kind==9:  # Minimalista
         photo((8,129,204,477))
         if poster:
-            draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='white' if blanco else 'black',width=stroke)
+            draw.line((br(215,134,215,470)[0],y(134),br(215,134,215,470)[0],y(470)),fill='white' if blanco else (207,207,207),width=stroke)
         event_text(225 if poster else 35,979,title_y=(152,257),day_y=(267,326),time_y=(337,411),place_y=(422,474),title_sz=51)
     elif kind==10:  # Institucional formal: imagen opcional fina a la izquierda
         photo((10,130,254,477))
@@ -471,14 +471,14 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(when,(25,332,595,405),51,lines=1,factor=date_factor)
         bodytext(place,(25,407,605,477),22,lines=2)
     elif kind==12:  # Auditorio clásico: formal sin cartel dominante
-        draw.line((br(48,141,950,141)[0],y(141),br(48,141,950,141)[2],y(141)),fill='white' if blanco else 'black',width=stroke)
+        draw.line((br(48,141,950,141)[0],y(141),br(48,141,950,141)[2],y(141)),fill='white' if blanco else (207,207,207),width=stroke)
         bodytext(label,(50,160,950,294),56,lines=3,min_size=19)
         bodytext(day+'     '+when,(55,310,945,380),37,lines=1,factor=date_factor)
         bodytext(place,(55,395,945,474),28,lines=2)
     elif kind==13:  # Programa cultural: poster alto y texto a la izquierda
         photo((672,135,981,475),frame=bool(poster))
         event_text(24,660,title_y=(155,263),day_y=(269,326),time_y=(334,401),place_y=(411,473),title_sz=46)
-        draw.line((br(665,134,665,476)[0],y(134),br(665,134,665,476)[0],y(476)),fill='white' if blanco else 'black',width=stroke)
+        draw.line((br(665,134,665,476)[0],y(134),br(665,134,665,476)[0],y(476)),fill='white' if blanco else (207,207,207),width=stroke)
     elif kind==14:  # Elegancia minimal: poster horizontal discreto
         photo((12,136,988,274))
         bodytext(label,(25,277,975,357),44,lines=2)
@@ -499,20 +499,20 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day+'   |   '+when,(32,317,970,388),38,lines=1,factor=date_factor)
         bodytext(place,(45,400,956,474),27,lines=2)
     elif kind==17:  # 24: Danza, cabecera negra y composición en dos columnas
-        draw.rectangle(br(5,125,995,173),fill='white' if blanco else 'black')
-        bodytext('DANZA', (35,127,965,172),32,color='black' if blanco else 'white',lines=1)
+        draw.rectangle(br(5,125,995,173),fill='white' if blanco else (207,207,207))
+        bodytext('DANZA', (35,127,965,172),32,color='black',lines=1)
         photo((8,179,438,475),soften=.44)
         if poster is None:
             # Movimiento de bailarinas representado mediante curvas y círculos
             for cx in (155,299):
                 xx,yy=br(cx,236,cx,236)[:2]
                 rr=sz(18)
-                draw.ellipse((xx-rr,yy-rr,xx+rr,yy+rr),fill='white' if blanco else 'black')
-                draw.line((xx,yy+rr,xx-sz(18),y(371)),fill='white' if blanco else 'black',width=sz(10))
-                draw.line((xx-sz(18),y(371),xx-sz(80),y(436)),fill='white' if blanco else 'black',width=sz(8))
-                draw.line((xx-sz(18),y(371),xx+sz(60),y(418)),fill='white' if blanco else 'black',width=sz(8))
-                draw.line((xx,y(287),xx+sz(79),y(237)),fill='white' if blanco else 'black',width=sz(6))
-        draw.line((br(447,181,447,471)[0],y(181),br(447,181,447,471)[0],y(471)),fill='white' if blanco else 'black',width=stroke)
+                draw.ellipse((xx-rr,yy-rr,xx+rr,yy+rr),fill='white' if blanco else (207,207,207))
+                draw.line((xx,yy+rr,xx-sz(18),y(371)),fill='white' if blanco else (207,207,207),width=sz(10))
+                draw.line((xx-sz(18),y(371),xx-sz(80),y(436)),fill='white' if blanco else (207,207,207),width=sz(8))
+                draw.line((xx-sz(18),y(371),xx+sz(60),y(418)),fill='white' if blanco else (207,207,207),width=sz(8))
+                draw.line((xx,y(287),xx+sz(79),y(237)),fill='white' if blanco else (207,207,207),width=sz(6))
+        draw.line((br(447,181,447,471)[0],y(181),br(447,181,447,471)[0],y(471)),fill='white' if blanco else (207,207,207),width=stroke)
         event_text(460,979,title_y=(184,290),day_y=(298,356),time_y=(355,416),place_y=(413,472),title_sz=49)
     elif kind==18:  # 25: fotografía principal y datos
         if poster:
@@ -529,7 +529,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(when,(19,267,379,345),51,lines=1,factor=date_factor)
         bodytext(place,(20,367,379,477),23,lines=3)
         draw.line((br(425,132,425,132)[0],y(132),
-                   br(391,475,391,475)[0],y(475)),fill='white' if blanco else 'black',width=sz(6))
+                   br(391,475,391,475)[0],y(475)),fill='white' if blanco else (207,207,207),width=sz(6))
         if poster:
             photo((447,135,980,298),frame=True)
             bodytext(label,(445,308,975,468),50,lines=3,min_size=16)
@@ -547,9 +547,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(day+' · '+when,(100,342,895,412),39,lines=1,factor=date_factor)
             bodytext(place,(110,418,889,470),26,lines=2)
     elif kind==21:  # 28: bloque lateral, foto visible
-        draw.rectangle(br(12,138,311,470),fill='white' if blanco else 'black')
+        draw.rectangle(br(12,138,311,470),fill='white' if blanco else (207,207,207))
         bodytext('ACCESO LIBRE' if event['mode']=='libre' else 'BUTACA ASIGNADA',
-                 (25,194,295,344),31,lines=3,color='black' if blanco else 'white')
+                 (25,194,295,344),31,lines=3,color='black')
         if poster:
             photo((335,134,982,298),frame=True)
             bodytext(label,(347,305,973,384),42,lines=2)
@@ -569,9 +569,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(place,(105,408,895,467),25,lines=2)
     elif kind==23:  # 30: diagonal y fotografía visible
         draw.polygon([br(9,129,9,129)[:2],br(386,129,386,129)[:2],
-                      br(260,475,260,475)[:2],br(9,475,9,475)[:2]],fill='white' if blanco else 'black')
-        bodytext('ENTRADA',(24,159,298,230),32,color='black' if blanco else 'white',lines=1)
-        bodytext('CULTURAL',(23,234,292,304),29,color='black' if blanco else 'white',lines=1)
+                      br(260,475,260,475)[:2],br(9,475,9,475)[:2]],fill='white' if blanco else (207,207,207))
+        bodytext('ENTRADA',(24,159,298,230),32,color='black',lines=1)
+        bodytext('CULTURAL',(23,234,292,304),29,color='black',lines=1)
         if poster:
             photo((402,133,984,302),frame=True)
             bodytext(label,(410,307,979,390),43,lines=2)
@@ -580,10 +580,10 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         else:
             event_text(405,982,title_sz=47)
     elif kind==24:  # 31: escenario, izquierda oscura
-        draw.rectangle(br(13,137,297,472),fill='white' if blanco else 'black')
-        bodytext(day,(20,163,284,230),34,color='black' if blanco else 'white',lines=1,factor=date_factor)
-        bodytext(when,(20,264,283,342),43,color='black' if blanco else 'white',lines=1,factor=date_factor)
-        bodytext('ENTRADA',(22,384,282,452),29,color='black' if blanco else 'white',lines=1)
+        draw.rectangle(br(13,137,297,472),fill='white' if blanco else (207,207,207))
+        bodytext(day,(20,163,284,230),34,color='black',lines=1,factor=date_factor)
+        bodytext(when,(20,264,283,342),43,color='black',lines=1,factor=date_factor)
+        bodytext('ENTRADA',(22,384,282,452),29,color='black',lines=1)
         if poster:
             photo((321,136,983,300),frame=True)
             bodytext(label,(332,305,976,398),47,lines=2)
@@ -592,9 +592,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             event_text(322,982,title_sz=48)
     elif kind==25:  # 32: diagonal fotográfica
         draw.polygon([br(11,131,11,131)[:2],br(456,131,456,131)[:2],
-                      br(329,475,329,475)[:2],br(11,475,11,475)[:2]],fill='white' if blanco else 'black')
-        bodytext(day,(25,170,335,238),33,color='black' if blanco else 'white',lines=1,factor=date_factor)
-        bodytext(when,(20,283,319,370),48,color='black' if blanco else 'white',lines=1,factor=date_factor)
+                      br(329,475,329,475)[:2],br(11,475,11,475)[:2]],fill='white' if blanco else (207,207,207))
+        bodytext(day,(25,170,335,238),33,color='black',lines=1,factor=date_factor)
+        bodytext(when,(20,283,319,370),48,color='black',lines=1,factor=date_factor)
         if poster:
             photo((471,134,983,307),frame=True)
             bodytext(label,(479,311,977,407),43,lines=2)
@@ -618,9 +618,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day+' · '+when,(24,394,969,442),31,lines=1,factor=date_factor)
         bodytext(place,(28,447,963,479),21,lines=1)
     elif kind==28:  # 35: lateral negro y cartel
-        draw.rectangle(br(13,139,317,472),fill='white' if blanco else 'black')
-        bodytext('CONTROL DE ACCESO',(22,173,300,291),28,color='black' if blanco else 'white',lines=3)
-        bodytext(when,(23,344,299,440),42,color='black' if blanco else 'white',lines=1,factor=date_factor)
+        draw.rectangle(br(13,139,317,472),fill='white' if blanco else (207,207,207))
+        bodytext('CONTROL DE ACCESO',(22,173,300,291),28,color='black',lines=3)
+        bodytext(when,(23,344,299,440),42,color='black',lines=1,factor=date_factor)
         if poster:
             photo((339,134,984,303),frame=True)
             bodytext(label,(349,310,973,405),44,lines=2)
@@ -629,9 +629,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             event_text(340,980,title_sz=47)
     elif kind==29:  # 36: geometría cultural
         draw.polygon([br(12,130,12,130)[:2],br(347,130,347,130)[:2],
-                      br(243,475,243,475)[:2],br(12,475,12,475)[:2]],fill='white' if blanco else 'black')
-        bodytext('CULTURA',(25,170,286,260),36,color='black' if blanco else 'white',lines=1)
-        bodytext(day,(25,313,267,391),29,color='black' if blanco else 'white',lines=1,factor=date_factor)
+                      br(243,475,243,475)[:2],br(12,475,12,475)[:2]],fill='white' if blanco else (207,207,207))
+        bodytext('CULTURA',(25,170,286,260),36,color='black',lines=1)
+        bodytext(day,(25,313,267,391),29,color='black',lines=1,factor=date_factor)
         if poster:
             photo((368,134,982,306),frame=True)
             bodytext(label,(375,314,976,403),46,lines=2)
@@ -643,13 +643,13 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day,(20,158,379,246),37,lines=1,factor=date_factor)
         bodytext(when,(20,271,379,353),53,lines=1,factor=date_factor)
         bodytext(place,(20,373,380,471),25,lines=3)
-        draw.line((br(416,136,416,136)[0],y(136),br(397,470,397,470)[0],y(470)),fill='black',width=sz(3))
+        draw.line((br(416,136,416,136)[0],y(136),br(397,470,397,470)[0],y(470)),fill=(160,160,160),width=sz(3))
         if poster:
             photo((439,140,979,294),frame=True)
             bodytext(label,(442,304,972,466),49,lines=3)
         else: bodytext(label,(440,160,972,453),55,lines=3)
     elif kind==31:  # 38: Diagonal de contorno, no bloque negro
-        draw.line((br(360,133,360,133)[0],y(133),br(260,471,260,471)[0],y(471)),fill='black',width=sz(4))
+        draw.line((br(360,133,360,133)[0],y(133),br(260,471,260,471)[0],y(471)),fill=(160,160,160),width=sz(4))
         bodytext(day,(21,165,301,246),34,lines=1,factor=date_factor)
         bodytext(when,(19,274,270,365),48,lines=1,factor=date_factor)
         if poster:
