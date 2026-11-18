@@ -48,7 +48,20 @@ class ControlEntradasTests(unittest.TestCase):
         rendered=ticket_printer.render_landscape_ticket(
             event,ticket,80,{"plantilla":ticket_printer.TEMPLATES[19]})
         self.assertEqual(rendered.height,576)
-        self.assertGreater(ticket_printer._code128_image(barcode,300,35).width,120)
+        self.assertGreater(ticket_printer._code128_image(barcode,700,42).width,450)
+        for paper_width in (58,80):
+            picture=ticket_printer.render_landscape_ticket(
+                event,ticket,paper_width,{"plantilla":ticket_printer.TEMPLATES[19]})
+            g=ticket_printer.geometry(paper_width,None,{})
+            body_left=g["L"]+round(g["usable"]*0.034)
+            body_right=g["L"]+round(g["usable"]*0.966)
+            bar_y=g["T"]+round(521*g["sx"])
+            bar_h=max(18,round(44*g["sx"]))
+            code=ticket_printer._code128_image(barcode,body_right-body_left,bar_h)
+            self.assertGreaterEqual(code.width,250)
+            exact_x=(body_left+body_right-code.width)//2
+            from PIL import Image
+            self.assertEqual(picture.crop((exact_x,bar_y,exact_x+code.width,bar_y+code.height)).tobytes(),code.tobytes())
         self.assertEqual(app.validate(barcode,e,"reader-A")["status"],"valid")
         self.assertEqual(app.validate(ticket["qr"],e,"reader-B")["status"],"used")
         self.assertEqual(app.validate("0000000000000000",e,"reader-B")["status"],"invalid")
