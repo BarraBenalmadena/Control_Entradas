@@ -414,6 +414,10 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         bodytext(day,(x0,day_y[0],x1,day_y[1]),37,lines=1,min_size=14,factor=date_factor)
         bodytext(when,(x0,time_y[0],x1,time_y[1]),54,lines=1,min_size=17,factor=date_factor)
         bodytext(place,(x0,place_y[0],x1,place_y[1]),24,lines=2,min_size=10)
+    selected_avisos=str(design.get('estilo_avisos','Según modelo'))
+    avisos_compact=(selected_avisos in ('Según modelo','B · Recuadro','D · Separadores'))
+    # Cuatro composiciones grises con foto y tipografía diseñadas a tamaño final.
+    # En los estilos B/D no se achica el contenido después de dibujarlo.
     if kind==0:  # Clásico
         photo((5,127,384,481),frame=True)
         event_text(397 if poster else 12,991)
@@ -567,40 +571,44 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             hline(302,120,873)
             bodytext(day+' · '+when,(102,318,900,401),36,lines=1,factor=date_factor)
             bodytext(place,(105,408,895,467),25,lines=2)
-    elif kind==23:  # 30: diagonal y fotografía visible
-        draw.polygon([br(9,129,9,129)[:2],br(386,129,386,129)[:2],
-                      br(260,475,260,475)[:2],br(9,475,9,475)[:2]],fill='white' if blanco else (207,207,207))
-        bodytext('ENTRADA',(24,159,298,230),32,color='black',lines=1)
-        bodytext('CULTURAL',(23,234,292,304),29,color='black',lines=1)
+    elif kind==23:  # 30: diagonal gris, fecha/hora en tamaño grande
+        floor=347 if avisos_compact else 475
+        draw.polygon([br(9,130,9,130)[:2],br(347,130,347,130)[:2],
+                      br(279,floor,279,floor)[:2],br(9,floor,9,floor)[:2]],
+                     fill='white' if blanco else (207,207,207))
+        bodytext(day,(18,158,298,230),43,lines=1,factor=date_factor)
+        bodytext(when,(18,235,283,326),56,lines=1,factor=date_factor)
         if poster:
-            photo((402,133,984,302),frame=True)
-            bodytext(label,(410,307,979,390),43,lines=2)
-            bodytext(day+' · '+when,(415,393,975,440),26,lines=1,factor=date_factor)
-            bodytext(place,(417,442,972,473),19,lines=1)
-        else:
-            event_text(405,982,title_sz=47)
-    elif kind==24:  # 31: escenario, izquierda oscura
-        draw.rectangle(br(13,137,297,472),fill='white' if blanco else (207,207,207))
-        bodytext(day,(20,163,284,230),34,color='black',lines=1,factor=date_factor)
-        bodytext(when,(20,264,283,342),43,color='black',lines=1,factor=date_factor)
-        bodytext('ENTRADA',(22,384,282,452),29,color='black',lines=1)
+            photo((359,134,985,266 if avisos_compact else 323),frame=True)
+        bodytext(label,(364,269 if avisos_compact else 328,976,
+                        315 if avisos_compact else 411),47,lines=2,min_size=15)
+        bodytext(place,(363,315 if avisos_compact else 419,976,
+                        346 if avisos_compact else 468),21,lines=2,min_size=11)
+    elif kind==24:  # 31: bloque de fecha visible y cartel protagonista
+        floor=347 if avisos_compact else 473
+        draw.rectangle(br(13,137,309,floor),
+                       fill='white' if blanco else (207,207,207))
+        bodytext(day,(21,154,302,225),44,lines=1,factor=date_factor)
+        bodytext(when,(20,232,302,323),57,lines=1,factor=date_factor)
         if poster:
-            photo((321,136,983,300),frame=True)
-            bodytext(label,(332,305,976,398),47,lines=2)
-            bodytext(place,(336,413,972,469),25,lines=2)
-        else:
-            event_text(322,982,title_sz=48)
-    elif kind==25:  # 32: diagonal fotográfica
-        draw.polygon([br(11,131,11,131)[:2],br(456,131,456,131)[:2],
-                      br(329,475,329,475)[:2],br(11,475,11,475)[:2]],fill='white' if blanco else (207,207,207))
-        bodytext(day,(25,170,335,238),33,color='black',lines=1,factor=date_factor)
-        bodytext(when,(20,283,319,370),48,color='black',lines=1,factor=date_factor)
+            photo((327,136,983,270 if avisos_compact else 322),frame=True)
+        bodytext(label,(333,274 if avisos_compact else 328,978,
+                        317 if avisos_compact else 408),49,lines=2,min_size=15)
+        bodytext(place,(333,319 if avisos_compact else 414,978,
+                        345 if avisos_compact else 470),23,lines=2,min_size=11)
+    elif kind==25:  # 32: diagonal, texto importante y cartel más ancho
+        floor=347 if avisos_compact else 473
+        draw.polygon([br(11,131,11,131)[:2],br(415,131,415,131)[:2],
+                      br(317,floor,317,floor)[:2],br(11,floor,11,floor)[:2]],
+                     fill='white' if blanco else (207,207,207))
+        bodytext(day,(25,154,330,226),43,lines=1,factor=date_factor)
+        bodytext(when,(21,233,318,322),55,lines=1,factor=date_factor)
         if poster:
-            photo((471,134,983,307),frame=True)
-            bodytext(label,(479,311,977,407),43,lines=2)
-            bodytext(place,(480,411,975,472),23,lines=2)
-        else:
-            event_text(432,979,title_sz=46)
+            photo((425,134,983,267 if avisos_compact else 325),frame=True)
+        bodytext(label,(431,270 if avisos_compact else 330,978,
+                        316 if avisos_compact else 411),46,lines=2,min_size=14)
+        bodytext(place,(433,317 if avisos_compact else 415,975,
+                        345 if avisos_compact else 470),22,lines=2,min_size=10)
     elif kind==26:  # 33: columna con cartel protagonista
         if poster:
             photo((14,134,557,474),frame=True)
@@ -627,17 +635,19 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
             bodytext(day+' · '+place,(348,413,975,472),23,lines=2)
         else:
             event_text(340,980,title_sz=47)
-    elif kind==29:  # 36: geometría cultural
-        draw.polygon([br(12,130,12,130)[:2],br(347,130,347,130)[:2],
-                      br(243,475,243,475)[:2],br(12,475,12,475)[:2]],fill='white' if blanco else (207,207,207))
-        bodytext('CULTURA',(25,170,286,260),36,color='black',lines=1)
-        bodytext(day,(25,313,267,391),29,color='black',lines=1,factor=date_factor)
+    elif kind==29:  # 36: geometría gris, fecha y hora destacadas
+        floor=347 if avisos_compact else 473
+        draw.polygon([br(12,130,12,130)[:2],br(355,130,355,130)[:2],
+                      br(280,floor,280,floor)[:2],br(12,floor,12,floor)[:2]],
+                     fill='white' if blanco else (207,207,207))
+        bodytext(day,(20,156,305,225),42,lines=1,factor=date_factor)
+        bodytext(when,(19,229,291,324),55,lines=1,factor=date_factor)
         if poster:
-            photo((368,134,982,306),frame=True)
-            bodytext(label,(375,314,976,403),46,lines=2)
-            bodytext(when+' · '+place,(379,410,971,475),22,lines=2)
-        else:
-            event_text(365,980,title_sz=47)
+            photo((364,134,983,270 if avisos_compact else 326),frame=True)
+        bodytext(label,(371,274 if avisos_compact else 330,977,
+                        317 if avisos_compact else 408),48,lines=2,min_size=15)
+        bodytext(place,(372,320 if avisos_compact else 414,975,
+                        345 if avisos_compact else 471),22,lines=2,min_size=10)
     elif kind==30:  # 37: Columnas completamente blancas
         hline(255,12,385); hline(359,12,385)
         bodytext(day,(20,158,379,246),37,lines=1,factor=date_factor)
@@ -689,7 +699,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         avisos='D'
     else:
         avisos='Clásico'
-    if avisos in ('B','D') and kind not in (34,35):
+    if avisos in ('B','D') and kind not in (23,24,25,29,34,35):
         # Se comprime únicamente la composición del espectáculo. El encabezado,
         # el talón QR y el Code128 conservan sus dimensiones y píxeles.
         x0,x1=L+sz(3),divider-sz(4)
