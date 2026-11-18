@@ -46,12 +46,12 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertEqual(len(barcode),16)
         self.assertTrue(barcode.isdigit())
         rendered=ticket_printer.render_landscape_ticket(
-            event,ticket,80,{"plantilla":ticket_printer.TEMPLATES[19]})
+            event,ticket,80,{"plantilla":ticket_printer.TEMPLATES[19],"estilo_avisos":"Clásico"})
         self.assertEqual(rendered.height,576)
         self.assertGreater(ticket_printer._code128_image(barcode,700,42).width,450)
         for paper_width in (58,80):
             picture=ticket_printer.render_landscape_ticket(
-                event,ticket,paper_width,{"plantilla":ticket_printer.TEMPLATES[19]})
+                event,ticket,paper_width,{"plantilla":ticket_printer.TEMPLATES[19],"estilo_avisos":"Clásico"})
             g=ticket_printer.geometry(paper_width,None,{})
             body_left=g["L"]+round(g["usable"]*0.034)
             body_right=g["L"]+round(g["usable"]*0.966)
@@ -65,6 +65,26 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertEqual(app.validate(barcode,e,"reader-A")["status"],"valid")
         self.assertEqual(app.validate(ticket["qr"],e,"reader-B")["status"],"used")
         self.assertEqual(app.validate("0000000000000000",e,"reader-B")["status"],"invalid")
+
+    def test_notices_B_D_in_all_designs(self):
+        e=app.create_event("Avisos visibles","2027-04-12T19:00","libre",1)
+        event,ticket=app.get_ticket(e,1)
+        for model in (0,2,3,19,23,34,35):
+            for style in ("B · Recuadro","D · Separadores"):
+                options={"plantilla":ticket_printer.TEMPLATES[model],
+                         "estilo_avisos":style}
+                picture=ticket_printer.render_landscape_ticket(event,ticket,80,options)
+                g=ticket_printer.geometry(80,None,options)
+                bar_y=g["T"]+round(499*g["sx"])
+                bar_h=max(18,round(566*g["sx"])-round(499*g["sx"]))
+                barcode=ticket_printer.barcode_ticket_value(ticket["id"])
+                left=g["L"]+round(g["usable"]*.034)
+                right=g["L"]+round(g["usable"]*.966)
+                actual=ticket_printer._code128_image(barcode,right-left,bar_h)
+                at=(left+right-actual.width)//2
+                self.assertEqual(picture.crop((at,bar_y,at+actual.width,
+                                               bar_y+bar_h)).tobytes(),actual.tobytes(),
+                                 "No se debe deformar el Code128 en "+style)
 
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
