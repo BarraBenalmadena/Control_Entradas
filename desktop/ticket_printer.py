@@ -351,21 +351,22 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         if src is not None:
             # Never let a logo invade the decorative frame (or overlap the cut zone).
             a=max(15,min(985,a));c=max(a+1,min(985,c))
-            b=max(15,min(90,b));d=max(b+1,min(98,d))
+            b=max(11,min(90,b));d=max(b+1,min(109,d))
             gray=ImageOps.grayscale(src)
-            bounds=gray.point(lambda v: 255 if v<185 else 0).getbbox()
+            bounds=gray.point(lambda v: 255 if v<145 else 0).getbbox()
             artwork=src.crop(bounds) if bounds else src
+            artwork=ImageOps.autocontrast(artwork,cutoff=1)
             _fitted(im,artwork,(hx(a),y(b),hx(c),y(d)),'Mostrar completa')
     title_box=(140,15,860,80)
     subtitle_box=(140,79,860,110)
     lw=min(185,max(80,round(logo_w*1000/max(usable,1)*xunit)))
     # ancho de logo expresado como fracción de encabezado; evita solapes en 58 mm
-    lw=min(lw,195)
+    lw=min(round(lw*1.16),225)
     if logo_pos=='Extremos':
-        logo_at(ayto,26,15,26+lw,100)
-        logo_at(centro,970-lw,15,970,100)
-        title_box=(20+lw,14,980-lw,79)
-        subtitle_box=(20+lw,78,980-lw,110)
+        logo_at(ayto,24,11,24+lw,108)
+        logo_at(centro,976-lw,11,976,108)
+        title_box=(32+lw,14,967-lw,79)
+        subtitle_box=(32+lw,78,967-lw,110)
     elif logo_pos=='Juntos a la izquierda':
         logo_at(ayto,10,5,10+lw,114)
         logo_at(centro,17+lw,12,17+lw*2,105)
@@ -671,19 +672,22 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     else:
         notes=('RESPETE SU FILA Y BUTACA ASIGNADAS',
                'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA')
-    bodytext(notes[0],(10,494,990,513),16,lines=1,min_size=8)
+    bodytext(notes[0],(15,489,985,505),16,lines=1,min_size=8)
+    bodytext(notes[1],(15,507,985,523),15,lines=1,min_size=8)
     # Code128 ocupa una franja ancha del CUERPO PRINCIPAL, no el talón
     # estrecho del QR. La versión anterior comprimía cada barra a 1 píxel.
     # Aquí las barras son de 3-5 píxeles y permanecen sin interpolar.
     area_left,area_right=br(34,519,966,568)[0],br(34,519,966,568)[2]
     barcode=_code128_image(barcode_ticket_value(ticket['id']),
-                           area_right-area_left,max(18,y(565)-y(521)))
+                           area_right-area_left,max(18,y(567)-y(531)))
     bar_x=(area_left+area_right-barcode.width)//2
-    im.paste(barcode,(bar_x,y(521)))
+    im.paste(barcode,(bar_x,y(531)))
 
     # Talón del QR inalterado; nunca interpolar el código.
     stub_left, stub_right = divider+xu(8), W-g['right_limit']-xu(4)
     _dash_line(ImageDraw.Draw(im),(stub_left,y(120),stub_right,y(172)),width=stroke,dash=max(4,xu(10)))
+    text_box('CONTROL DE ACCESO',
+             (stub_left+2,y(39),stub_right-2,y(100)),23,lines=2,min_size=11)
     text_box(f"N.º {int(ticket['number']):04d}",
              (stub_left+2,y(124),stub_right-2,y(168)),30,lines=1,min_size=12)
     # Priorizar módulos grandes incluso en papel térmico. Calcular el límite
