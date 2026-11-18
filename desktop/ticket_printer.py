@@ -349,7 +349,7 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
         if src is not None:
             # Never let a logo invade the decorative frame (or overlap the cut zone).
             a=max(15,min(985,a));c=max(a+1,min(985,c))
-            b=max(5,min(100,b));d=max(b+1,min(113,d))
+            b=max(15,min(90,b));d=max(b+1,min(98,d))
             gray=ImageOps.grayscale(src)
             bounds=gray.point(lambda v: 255 if v<185 else 0).getbbox()
             artwork=src.crop(bounds) if bounds else src
@@ -360,8 +360,8 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # ancho de logo expresado como fracción de encabezado; evita solapes en 58 mm
     lw=min(lw,195)
     if logo_pos=='Extremos':
-        logo_at(ayto,10,5,10+lw,114)
-        logo_at(centro,990-lw,5,990,114)
+        logo_at(ayto,26,15,26+lw,100)
+        logo_at(centro,970-lw,15,970,100)
         title_box=(20+lw,14,980-lw,79)
         subtitle_box=(20+lw,78,980-lw,110)
     elif logo_pos=='Juntos a la izquierda':
@@ -680,20 +680,18 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     # Priorizar módulos grandes incluso en papel térmico. Calcular el límite
     # teniendo en cuenta la caja real: nunca redimensionar una matriz QR.
     qy=y(182)
-    qr_limit=y(465)-qy
+    qr_limit=y(420)-qy
     qr=_qr_image(ticket['qr'],stub_right-stub_left-xu(4),qr_limit)
     qx=(stub_left+stub_right-qr.width)//2
     im.paste(qr,(qx,qy))
     caption_y=qy+qr.height+sz(4)
-    text_box('ESCANEAR QR',(stub_left,caption_y,stub_right,caption_y+sz(21)),17,lines=1,min_size=9)
-    caption_y+=sz(22)
-    text_box(ticket.get('seat_label') or 'ENTRADA LIBRE',
-             (stub_left,caption_y,stub_right,caption_y+sz(29)),16,lines=2,min_size=9)
+    text_box('ESCANEAR QR',(stub_left,y(423),stub_right,y(443)),14,lines=1,min_size=9)
+    # Reservar distancia blanca real antes del Code128 para evitar solapes.
     # Barcode alternativo, autenticado por inclusión en evento firmado/servidor.
     # Ubicar en la franja entre descripción QR y "1 PERSONA".
     barcode=_code128_image(barcode_ticket_value(ticket['id']),
-                           stub_right-stub_left, max(13,y(484)-y(448)))
-    im.paste(barcode,((stub_left+stub_right-barcode.width)//2,y(447)))
+                           stub_right-stub_left-xu(8), max(13,y(485)-y(449)))
+    im.paste(barcode,((stub_left+stub_right-barcode.width)//2,y(449)))
     text_box('1 PERSONA',(stub_left,y(486),stub_right,y(529)),26,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(540),stub_right,y(563)),14,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
