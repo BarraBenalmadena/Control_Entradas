@@ -276,7 +276,7 @@ class ControlEntradasTests(unittest.TestCase):
         from PIL import Image
         from tempfile import TemporaryDirectory
         from unittest.mock import patch
-        self.assertEqual(len(FOUR),8)
+        self.assertEqual(len(FOUR),12)
         eid=app.create_event('Festival de Navidad','2027-12-16T19:00','libre',2)
         event,first=app.get_ticket(eid,1)
         _,second=app.get_ticket(eid,2)
@@ -314,8 +314,8 @@ class ControlEntradasTests(unittest.TestCase):
         from PIL import Image
         from tempfile import TemporaryDirectory
         import fitz
-        self.assertEqual(len(MODELS),8)
-        self.assertEqual(len(set(MODELS)),8)
+        self.assertEqual(len(MODELS),12)
+        self.assertEqual(len(set(MODELS)),12)
         eid=app.create_event('Concierto de Navidad','2027-12-16T19:00','libre',2)
         event,first=app.get_ticket(eid,1)
         _,second=app.get_ticket(eid,2)
@@ -323,7 +323,7 @@ class ControlEntradasTests(unittest.TestCase):
             jpg=Path(folder)/'poster_propio.jpg'
             Image.new('RGB',(430,790),(245,25,35)).save(jpg)
             coords=((930,230),(730,230),(70,230),(725,230))
-            for index,model in enumerate(MODELS[4:]):
+            for index,model in enumerate(MODELS[4:8]):
                 conf={'plantilla':model,'poster':str(jpg)}
                 show=ticket_printer.render_landscape_ticket(
                     event,first,80,conf,length_mm=165,color_preview=True)
@@ -345,12 +345,63 @@ class ControlEntradasTests(unittest.TestCase):
                                     other.crop((aa,172,bb,400)).tobytes(),model)
             dest=Path(folder)/'ocho_modelos.pdf'
             ticket_printer.export_catalog_pdf(event,first,dest,
-                {'poster':str(jpg)},templates=MODELS,
+                {'poster':str(jpg)},templates=MODELS[:8],
                 width_mm=80,length_mm=165)
             with fitz.open(dest) as document:
                 self.assertEqual(document.page_count,2)
                 self.assertGreater(document[0].rect.width,
                                    document[0].rect.height)
+
+    def test_reference_gallery_four_new_models_I_to_L_original_jpg_and_qr_isolation(self):
+        from four_models import MODELS
+        from reference_models import MODELS as NEW
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        import fitz
+        self.assertEqual(tuple(MODELS[8:]),tuple(NEW))
+        eid=app.create_event('Festival de Navidad','2027-12-16T19:00','libre',2)
+        event,first=app.get_ticket(eid,1)
+        _,second=app.get_ticket(eid,2)
+        with TemporaryDirectory() as folder:
+            jpg=Path(folder)/'mi_jpg_personal.jpg'
+            crest=Path(folder)/'escudo_original.png'
+            Image.new('RGB',(410,800),(240,28,35)).save(jpg)
+            Image.new('RGB',(160,330),(15,214,44)).save(crest)
+            for model in NEW:
+                spec={'plantilla':model,'poster':str(jpg),
+                      'logo_ayto':str(crest)}
+                picture=ticket_printer.render_landscape_ticket(
+                    event,first,80,spec,length_mm=165,color_preview=True)
+                self.assertEqual(picture.size,(1320,576))
+                left_photo=picture.crop((24,200,100,420))
+                self.assertTrue(any(r>170 and g<90
+                                   for r,g,b in left_photo.getdata()),model)
+                header=picture.crop((300,12,500,141))
+                self.assertTrue(any(g>140 and g>r*2
+                                   for r,g,b in header.getdata()),model)
+                other=ticket_printer.render_landscape_ticket(
+                    event,second,80,spec,length_mm=165,color_preview=True)
+                qr_a=picture.crop((round(856*1320/1080),175,
+                                   round(1067*1320/1080),405))
+                qr_b=other.crop((round(856*1320/1080),175,
+                                 round(1067*1320/1080),405))
+                self.assertNotEqual(qr_a.tobytes(),qr_b.tobytes(),model)
+                thermal=ticket_printer.render_landscape_ticket(
+                    event,first,80,spec,length_mm=165,color_preview=False)
+                sample=thermal.getpixel((round(200*1320/1080),350))
+                self.assertEqual(sample[0],sample[1],model)
+                self.assertEqual(sample[1],sample[2],model)
+                # Espacio QR blanco bajo la numeración: jamás una foto
+                # ni línea roja / azul puede atravesar la matriz.
+                x=round(853*1320/1080)
+                self.assertEqual(picture.getpixel((x,215)),(255,255,255),model)
+            pdf=Path(folder)/'doce_modelos.pdf'
+            ticket_printer.export_catalog_pdf(event,first,pdf,
+                 {'poster':str(jpg),'logo_ayto':str(crest)},
+                 templates=MODELS,width_mm=80,length_mm=165)
+            with fitz.open(pdf) as doc:
+                self.assertEqual(doc.page_count,3)
+                self.assertGreater(doc[0].rect.width,doc[0].rect.height)
 
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
