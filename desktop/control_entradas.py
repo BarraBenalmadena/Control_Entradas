@@ -837,7 +837,8 @@ def launch_gui():
         cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
-        if chosen not in FOUR_MODELS:
+        migrando_a_cuatro=chosen not in FOUR_MODELS
+        if migrando_a_cuatro:
             # Resguardar selección anterior SIN borrar sus imágenes ni datos.
             if chosen in MODERN_MODELS+CATALOG_NAMES+ticket_printer.TEMPLATES:
                 archive=DATA_DIR/'Respaldos_disenos'
@@ -848,7 +849,7 @@ def launch_gui():
             chosen=FOUR_MODELS[0]
         variables={
             'plantilla':tk.StringVar(value=chosen),
-            'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
+            'ajuste_imagen':tk.StringVar(value='Mostrar completa' if migrando_a_cuatro else config.get('ajuste_imagen','Mostrar completa')),
             'foto_centro_x_pct':tk.StringVar(value=str(config.get('foto_centro_x_pct','50'))),
             'foto_centro_y_pct':tk.StringVar(value=str(config.get('foto_centro_y_pct','50'))),
             'foto_zoom_pct':tk.StringVar(value=str(config.get('foto_zoom_pct','100'))),
@@ -1114,7 +1115,7 @@ def launch_gui():
                 label=ttk.Label(fr,image=photo)
                 label.image=photo
                 label.pack(anchor='center',pady=12)
-                ttk.Label(fr,text='Vista previa en blanco y negro, tal como se envía a la ZYWELL.').pack()
+                ttk.Label(fr,text='Vista previa a color; la ZYWELL imprimirá en blanco y negro.').pack()
                 ttk.Button(fr,text='Cerrar',command=popup.destroy).pack(pady=8)
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
