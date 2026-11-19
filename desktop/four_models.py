@@ -14,12 +14,14 @@ import math
 import os
 import sys
 
+from alternative_models import MODELS as ADDITIONAL_MODELS
+
 MODELS = (
     "A · Violín y escudo",
     "B · Cascanueces y logotipo",
     "C · Navidad con diagonal",
     "D · Escenario y doble cabecera",
-)
+) + ADDITIONAL_MODELS
 INDEX = {name: index for index, name in enumerate(MODELS)}
 ART_NAMES = (
     "A_Violin.jpg", "B_Cascanueces.jpg",
@@ -101,6 +103,11 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     import ticket_printer as tp
 
     variant = INDEX[str(design["plantilla"])]
+    if variant >= 4:
+        from alternative_models import render as render_alternative
+        return render_alternative(
+            event,ticket,width_mm,design,length_mm,
+            color_preview=color_preview)
     accent = ACCENT[variant]
     geom = tp.geometry(width_mm, length_mm, design)
     W, H = geom["W"], geom["H"]
