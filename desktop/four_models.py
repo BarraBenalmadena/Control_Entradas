@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import os
 import sys
+import math
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 
 MODELS = (
@@ -95,6 +96,25 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     def rule(points, color=ink, width=2):
         ImageDraw.Draw(img).line([(X(x),Y(y)) for x,y in points],
                                 fill=color,width=max(1,Y(width)))
+
+    def star(cx,cy,r,color):
+        # Motivos dibujados como geometría: no dependen de fuentes que
+        # muestran cuadrados vacíos en algunas impresoras Windows.
+        coords=[]
+        for n in range(10):
+            angle=-math.pi/2+n*math.pi/5
+            radius=r if n%2==0 else r*.44
+            coords.append((X(cx+math.cos(angle)*radius),
+                           Y(cy+math.sin(angle)*radius)))
+        ImageDraw.Draw(img).polygon(coords,fill=color)
+
+    def snowflake(cx,cy,r,color):
+        painter=ImageDraw.Draw(img)
+        for direction in range(6):
+            a=direction*math.pi/3
+            ax,ay=(X(cx+math.cos(a)*r),Y(cy+math.sin(a)*r))
+            painter.line((X(cx),Y(cy),ax,ay),
+                         fill=color,width=max(1,Y(3)))
 
     # 1. Panel fotográfico, JPG de la función con prioridad absoluta.
     photo = _art(tp, variant, design)
@@ -218,13 +238,13 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
                               outline=ink,width=thickness+1,fill="white")
         text(title,(291,158,756,229),47,ink,lines=2,minimum=20)
         rule([(419,236),(491,236)],color="#d6a62b",width=2)
-        text("★",(502,226,544,247),19,"#d6a62b")
+        star(522,237,12,"#d6a62b")
         rule([(554,236),(639,236)],color="#d6a62b",width=2)
     elif variant==1:
         text(title,(282,143,771,241),48,NAVY,lines=2,minimum=20)
         rule([(330,249),(713,249)],color="#dda52a",width=3)
-        text("★",(283,235,324,261),22,"#dda52a")
-        text("★",(718,235,760,261),22,"#dda52a")
+        star(304,248,12,"#dda52a")
+        star(737,248,12,"#dda52a")
     elif variant==2:
         draw.rounded_rectangle(ui((278,149,766,259)),radius=Y(16),
                               outline="#d0a240",width=max(3,Y(5)),fill="#7e1422")
@@ -233,7 +253,9 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
         draw.rounded_rectangle(ui((280,146,768,251)),radius=Y(22),
                               fill="#e8f6fc",outline="#2484c7",width=thickness)
         text(title,(291,158,757,233),48,NAVY,lines=2,minimum=19)
-        text("❄",(503,230,543,269),30,"#1785c5")
+        snowflake(522,253,15,"#1785c5")
+        snowflake(424,254,8,"#58a4d9")
+        snowflake(629,254,8,"#58a4d9")
 
     # 4. Fecha y hora de la función, zona legible.
     start = datetime.fromisoformat(str(event["start_time"]))
