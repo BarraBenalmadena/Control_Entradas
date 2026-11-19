@@ -19,6 +19,7 @@ from reportlab.graphics.barcode.code128 import Code128
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4
 from catalog_models import CATALOG_NAMES, CATALOG_INDEX, catalog_asset
+from modern_catalog import MODELS as MODERN_MODELS, INDEX as MODERN_INDEX, render as render_modern
 
 PRINTABLE_DOTS = {58: 384, 80: 576}
 LANDSCAPE_SIZE = {58: (720, 384), 80: (1080, 576)}
@@ -564,6 +565,9 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     xu = lambda n: round(n*xunit)
     y = lambda n: T+round(n*scale)
     chosen=str(design.get('plantilla') or '')
+    if chosen in MODERN_INDEX:
+        return render_modern(event,ticket,width_mm,design,length_mm,
+                             color_preview=color_preview)
     if chosen in CATALOG_INDEX:
         return render_reference_jpg_ticket(event,ticket,width_mm,design,
                                            length_mm,color_preview=color_preview)
