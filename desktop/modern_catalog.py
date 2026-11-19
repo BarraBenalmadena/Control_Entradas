@@ -145,7 +145,14 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     # decorative palettes, WITHOUT the sample JPG's fake serial/QR/text.
     dr.rectangle((X(6),Y(6),W-X(7),H-Y(7)),outline=color,width=max(1,Y(4)))
     dr.rectangle((X(12),Y(12),X(267),H-Y(13)),fill='#eeeeee')
-    poster=tp._open_image(design.get('poster'))
+    custom_jpg=str(design.get('poster') or '').strip()
+    poster=tp._open_image(custom_jpg)
+    if custom_jpg and poster is None:
+        # Nunca ocultar un JPG indicado por el usuario tras una foto
+        # de ejemplo: dar un error visible para poder recuperar el archivo.
+        raise FileNotFoundError(
+            f'No se puede cargar la fotografía personalizada: {custom_jpg}. '
+            'Selecciona de nuevo el JPG desde el diseñador.')
     if poster is None:
         try:
             with Image.open(art_path(idx)) as f:
