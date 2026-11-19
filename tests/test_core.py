@@ -156,6 +156,25 @@ class ControlEntradasTests(unittest.TestCase):
             # not inherited from the original JPG.
             self.assertEqual(color.crop((round(color.width*.81),round(color.height*.34),round(color.width*.94),round(color.height*.68))).convert("L").getextrema()[0],0)
             self.assertEqual(thermal.mode,"RGB")
+            custom_poster=Path(folder)/"custom_poster.png"
+            Image.new('RGB',(480,680),(0,205,52)).save(custom_poster)
+            changed_event=dict(event)
+            changed_event["name"]="DANZA DE INVIERNO"
+            changed_event["start_time"]="2027-01-17T18:30"
+            custom_spec={"plantilla":CATALOG_NAMES[0],
+                         "poster":str(custom_poster),
+                         "lugar":"Auditorio municipal"}
+            with patch("ticket_printer.catalog_asset",return_value=src):
+                updated=ticket_printer.render_landscape_ticket(
+                    changed_event,ticket,80,custom_spec,color_preview=True)
+            self.assertGreater(updated.getpixel((30,110))[1],175,
+                               "Uploaded poster must replace reference image")
+            self.assertNotEqual(updated.crop((360,190,700,380)).tobytes(),
+                                color.crop((360,190,700,380)).tobytes(),
+                                "Changing title/date/venue must update ticket")
+            self.assertEqual(updated.getpixel((round(updated.width*.96),
+                                               round(updated.height*.70))),(255,255,255))
+
 
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
