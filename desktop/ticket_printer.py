@@ -301,7 +301,6 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
     diagonal shapes, crests, decorative symbols and colored background remain.
     No stale sample QR/Code128 survives in any ticket.
     """
-    from catalog_models import CATALOG_INDEX, catalog_asset
     key=CATALOG_INDEX[str(design['plantilla'])][1]
     path=catalog_asset(str(design['plantilla']))
     g=geometry(width_mm,length_mm,design)
