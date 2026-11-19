@@ -755,6 +755,7 @@ def launch_gui():
         import shutil
         import ticket_printer
         from catalog_models import CATALOG_NAMES
+        from modern_catalog import MODELS as MODERN_MODELS
         from PIL import Image, ImageTk
 
         event = next((item for item in list_events() if item['id'] == event_id), None)
@@ -768,7 +769,7 @@ def launch_gui():
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='CATÁLOGO PRINCIPAL · 25 DISEÑOS / VERSIONES BÁSICAS · 36',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='CATÁLOGO NUEVO · 30 DISEÑOS / VERSIONES BÁSICAS · 36',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -795,8 +796,8 @@ def launch_gui():
         cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
-        if chosen not in CATALOG_NAMES and chosen not in ticket_printer.TEMPLATES:
-            chosen=CATALOG_NAMES[0]
+        if chosen not in MODERN_MODELS and chosen not in CATALOG_NAMES and chosen not in ticket_printer.TEMPLATES:
+            chosen=MODERN_MODELS[0]
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
@@ -880,7 +881,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (25 seleccionados + 36 versiones básicas)',
+            'plantilla':'Diseño (30 nuevos + 25 anteriores + 36 básicos)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
@@ -904,7 +905,7 @@ def launch_gui():
         margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
         percent_choices=('70','80','90','100','110','120','130','140')
         combos={
-            'plantilla':CATALOG_NAMES+ticket_printer.TEMPLATES,
+            'plantilla':MODERN_MODELS+CATALOG_NAMES+ticket_printer.TEMPLATES,
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
             'modo_impresion':('Normal','Blanco económico'),
@@ -1059,12 +1060,14 @@ def launch_gui():
                 def gallery_switch(other):
                     gallery_win.destroy()
                     gallery(other)
-                ttk.Button(group_controls,text='CATÁLOGO PRINCIPAL (25)',
+                ttk.Button(group_controls,text='DISEÑOS NUEVOS (30)',
                            command=lambda:gallery_switch('catalogo')).pack(side='left',padx=4)
+                ttk.Button(group_controls,text='CATÁLOGO ANTERIOR (25)',
+                           command=lambda:gallery_switch('anteriores')).pack(side='left',padx=4)
                 ttk.Button(group_controls,text='VERSIONES BÁSICAS (36)',
                            command=lambda:gallery_switch('basicas')).pack(side='left',padx=4)
                 ttk.Label(option_controls,
-                          text='Catálogo actual' if collection=='catalogo' else 'Modelos anteriores'
+                          text={'catalogo':'30 diseños nuevos','anteriores':'25 anteriores','basicas':'36 básicos'}.get(collection,'')
                           ).pack(side='left',padx=5)
                 def gallery_style(style):
                     variables['modo_impresion'].set(style)
@@ -1083,7 +1086,7 @@ def launch_gui():
                 ttk.Button(option_controls,text='AVISOS D · SEPARADORES',
                            command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
                 ttk.Label(option_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
-                templates=CATALOG_NAMES if collection=='catalogo' else ticket_printer.TEMPLATES
+                templates=(MODERN_MODELS if collection=='catalogo' else CATALOG_NAMES if collection=='anteriores' else ticket_printer.TEMPLATES)
                 def create_printable_catalog(print_now=False):
                     try:
                         spec=current_design(save=False)
