@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.18"
+VERSION = "2.19"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.18 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.19 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -803,7 +803,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · v2.18')
+        win.title('Diseñador de entradas · v2.19')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
