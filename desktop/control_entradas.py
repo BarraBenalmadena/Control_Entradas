@@ -741,9 +741,10 @@ def launch_gui():
             temporary.write_text(
                 json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
             os.replace(temporary,draft_file)
+            draft_status.set('Borrador guardado automáticamente. Puedes '
+                             'cerrar y continuar corrigiendo los datos después.')
         except OSError as error:
-            # Sin fingir que se ha guardado un borrador si el disco falla.
-            print(f'No se pudo guardar el borrador: {error}',file=sys.stderr)
+            draft_status.set('ERROR: el borrador NO se ha guardado: '+str(error))
     def draft_changed(*_):
         if loading_fields[0]:return
         if draft_timer[0] is not None:
@@ -964,6 +965,14 @@ def launch_gui():
             if imgs.is_dir():
                 shutil.rmtree(imgs)
             refresh()
+            if editing_id[0]==event_id:
+                set_editing(None)
+                load_into_form({
+                    'name':'',
+                    'date':datetime.now().strftime("%d/%m/%Y 19:00"),
+                    'mode':'libre','capacity':'100','rows':'10','seats':'10'
+                })
+                persist_draft()
             helptext.set('Función eliminada. Puedes crear una nueva desde el formulario.')
         except Exception as ex:
             messagebox.showerror('No se pudo eliminar',str(ex),parent=root)
