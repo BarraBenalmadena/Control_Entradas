@@ -62,15 +62,38 @@ def _photo(tp, index, design):
 
 
 def _logo(tp, design, key):
+    """Preserva el JPG/PNG original y limpia solo márgenes realmente vacíos.
+
+    A diferencia del cargador de carteles, aquí se conserva el alfa de PNG.
+    Nunca se recorta una fracción del escudo ni se inventa un logo alternativo.
+    """
     source = str(design.get(key) or "").strip()
     if not source:
         return None
-    result = tp._open_image(source)
-    if result is None:
+    try:
+        with Image.open(source) as original:
+            adjusted=ImageOps.exif_transpose(original)
+            rgba=adjusted.convert("RGBA")
+            if "A" in adjusted.getbands() or "transparency" in adjusted.info:
+                bounds=rgba.getchannel("A").point(
+                    lambda v: 255 if v>10 else 0).getbbox()
+            else:
+                rgb=adjusted.convert("RGB")
+                white=Image.new("RGB",rgb.size,(255,255,255))
+                diff=ImageChops.difference(rgb,white).convert("L")
+                bounds=diff.point(lambda v: 255 if v>17 else 0).getbbox()
+            if bounds:
+                # Solo se quita espacio vacío, conservando íntegro el dibujo.
+                pad=max(1,round(min(rgba.size)*.014))
+                bounds=(max(0,bounds[0]-pad),max(0,bounds[1]-pad),
+                        min(rgba.width,bounds[2]+pad),
+                        min(rgba.height,bounds[3]+pad))
+                rgba=rgba.crop(bounds)
+            return rgba
+    except (OSError,ValueError) as exc:
         raise FileNotFoundError(
-            f"El archivo de {key} no se encuentra: {source}. "
-            "Vuelve a seleccionar el JPG/PNG desde el diseñador.")
-    return result
+            f"El archivo de {key} no se puede abrir: {source}. "
+            "Vuelve a seleccionar el JPG/PNG original.") from exc
 
 
 def render(event, ticket, width_mm, design, length_mm, color_preview=False):
