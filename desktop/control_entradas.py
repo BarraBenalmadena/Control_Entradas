@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.20"
+VERSION = "2.21"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.20 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.21 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -795,7 +795,7 @@ def launch_gui():
         import shutil
         import ticket_printer
         from catalog_models import CATALOG_NAMES
-        from modern_catalog import MODELS as MODERN_MODELS, install_reference_docx
+        from modern_catalog import MODELS as MODERN_MODELS
         from four_models import MODELS as FOUR_MODELS
         from PIL import Image, ImageTk
 
@@ -804,7 +804,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · v2.20')
+        win.title('Diseñador de entradas · v2.21')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
@@ -835,7 +835,12 @@ def launch_gui():
         if prefs.get('version_perfil_corte') not in ('0.8','0.9') or legacy_mode not in ticket_printer.CUT_MODES:
             legacy_mode=ticket_printer.CUT_MODES[2]
         cut_mode=tk.StringVar(value=legacy_mode)
-        length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
+        # La nueva geometría se configura una sola vez; nunca se pisa
+        # una medida que el usuario haya elegido después de la migración.
+        new_geometry=prefs.get('perfil_geometria')!='entrada_4_fiel_v1'
+        default_length=('165' if roll.get()=='80' else '110')
+        length=tk.StringVar(value=default_length if new_geometry else
+                            str(prefs.get('largo_ticket',default_length)))
         chosen=config.get('plantilla')
         migrando_a_cuatro=chosen not in FOUR_MODELS
         if migrando_a_cuatro:
@@ -849,7 +854,7 @@ def launch_gui():
             chosen=FOUR_MODELS[0]
         variables={
             'plantilla':tk.StringVar(value=chosen),
-            'ajuste_imagen':tk.StringVar(value='Mostrar completa' if migrando_a_cuatro else config.get('ajuste_imagen','Mostrar completa')),
+            'ajuste_imagen':tk.StringVar(value='Rellenar y recortar'),
             'foto_centro_x_pct':tk.StringVar(value=str(config.get('foto_centro_x_pct','50'))),
             'foto_centro_y_pct':tk.StringVar(value=str(config.get('foto_centro_y_pct','50'))),
             'foto_zoom_pct':tk.StringVar(value=str(config.get('foto_zoom_pct','100'))),
@@ -944,15 +949,9 @@ def launch_gui():
         art.pack(fill='x')
         labels={
             'plantilla':'Modelo principal (4 disponibles)',
-            'posicion_logos':'Posición de los dos logotipos',
-            'tamano_logos':'Tamaño de logotipos',
-            'estilo_escudo':'Escudo municipal en catálogo nuevo',
-            'ajuste_imagen':'Ajuste del cartel / fotografía',
             'foto_centro_x_pct':'Centrar foto horizontal (%) · 0 izquierda, 100 derecha',
             'foto_centro_y_pct':'Centrar foto vertical (%) · 0 arriba, 100 abajo',
             'foto_zoom_pct':'Ampliación de la foto (%) · 60–250',
-            'modo_impresion':'Impresión térmica: normal o blanca (menos tinta)',
-            'estilo_avisos':'Avisos de acceso (se aplica a TODOS los diseños)',
             'margen_izquierdo_mm':'Margen izquierdo / inicio (mm)',
             'margen_derecho_mm':'Margen derecho / corte (mm)',
             'margen_superior_mm':'Margen superior (mm)',
@@ -965,8 +964,8 @@ def launch_gui():
             'subtitulo':'Subtítulo',
             'lugar':'Lugar',
             'poster':'Fotografía lateral (JPG/PNG) · sustituye a la del modelo',
-            'logo_ayto':'Logo del Ayuntamiento',
-            'logo_centro':'Logo de la escuela/centro',
+            'logo_ayto':'Escudo/logo municipal ORIGINAL (JPG/PNG)',
+            'logo_centro':'Segundo logotipo ORIGINAL (opcional, JPG/PNG)',
         }
         margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
         percent_choices=('70','80','90','100','110','120','130','140')
@@ -1006,23 +1005,15 @@ def launch_gui():
                         if k=='poster':
                             note.set('Fotografía JPG seleccionada: tendrá prioridad sobre la imagen del modelo. Pulsa Vista previa para comprobarla.')
                 ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=row,column=2,padx=5)
-                if key=='logo_ayto':
-                    def use_education_logo():
-                        locations=(Path(sys.executable).resolve().parent/'logos'/'logo-educacion-azul.png',
-                                   Path(__file__).resolve().parent/'logos'/'logo-educacion-azul.png')
-                        p=next((v for v in locations if v.is_file()),None)
-                        if p is None:
-                            messagebox.showwarning('Logo', 'No se encuentra la carpeta logos del ZIP completo.',parent=win)
-                        else:variables['logo_ayto'].set(str(p))
-                    ttk.Button(art,text='Logo Educación azul',
-                               command=use_education_logo).grid(row=row,column=3,padx=4)
         art.columnconfigure(1,weight=1)
-        ttk.Label(designer_body,text='Izquierda y derecha son los extremos LARGOS del ticket horizontal (antes y después del corte). '
-                                    'El máximo permitido es 18 mm por lado. Superior e inferior ajustan el ancho imprimible. '
-                                    'En catálogo nuevo, «Solo escudo» reduce el logotipo municipal para ampliar el texto central. '
-                                    '«Fondo suave» mantiene la imagen suavizada detrás del texto. '
-                                    'El margen del ticket y la distancia física de la cuchilla son ajustes diferentes.',
-                  wraplength=890,justify='left').pack(anchor='w',pady=10)
+        ttk.Label(designer_body,
+            text='El escudo se obtiene exclusivamente del JPG/PNG municipal que selecciones. '
+                 'Si su formato es horizontal, se mostrará completo en la banda superior derecha, '
+                 'sin recortarlo ni sustituirlo por otro. El cartel JPG siempre llena '
+                 'el lateral y respeta el encuadre, sin repetirlo pequeño sobre un fondo. '
+                 'Formato de referencia: ticket horizontal de 165 × 72 mm imprimibles '
+                 'con rollo de 80 mm; el QR es único por entrada.',
+            wraplength=890,justify='left').pack(anchor='w',pady=10)
 
         note=tk.StringVar(value='Elige una plantilla y comprueba la vista previa. Se respetan los datos y las entradas existentes.')
         ttk.Label(outer,textvariable=note,wraplength=880,foreground='#1d5376').pack(anchor='w',pady=(7,5))
@@ -1089,7 +1080,8 @@ def launch_gui():
                 prefs_path.write_text(json.dumps({'ancho':int(roll.get()),'impresora':printer.get(),
                     'corte_v04':cut.get(),'tipo_corte':cut_type.get(),'avance_corte':feed_amount(),
                     'largo_ticket':ticket_length(),'modo_corte':cut_mode.get(),
-                    'version_perfil_corte':'0.9'},ensure_ascii=False),encoding='utf-8')
+                    'version_perfil_corte':'0.9',
+                    'perfil_geometria':'entrada_4_fiel_v1'},ensure_ascii=False),encoding='utf-8')
             return d
         def save_design():
             try:
@@ -1148,27 +1140,6 @@ def launch_gui():
                 photo_controls=ttk.Frame(gallery_controls)
                 photo_controls.pack(fill='x',pady=(0,4))
                 ttk.Label(group_controls,text='4 modelos A–D · Los anteriores se conservan archivados').pack(side='left',padx=5)
-                def import_from_word():
-                    selected=filedialog.askopenfilename(
-                        parent=gallery_win,
-                        title='Documento Word de ocho diseños de entradas',
-                        filetypes=[('Documento Word','*.docx')])
-                    if not selected:return
-                    try:
-                        count=install_reference_docx(Path(selected))
-                        crest=DATA_DIR/'catalogo_nuevo'/'escudo_benalmadena.png'
-                        if crest.is_file():
-                            variables['logo_ayto'].set(str(crest))
-                            variables['estilo_escudo'].set('Solo escudo')
-                    except Exception as ex:
-                        messagebox.showerror('Importar imágenes',str(ex),parent=gallery_win)
-                        return
-                    messagebox.showinfo('Motivos importados',
-                        f'Se han importado {count} imágenes decorativas reales del Word. '
-                        'Los números, QR, títulos y códigos de barras se generan '
-                        'con los datos de cada entrada.',parent=gallery_win)
-                    gallery_win.destroy()
-                    gallery('catalogo')
                 def restore_default_photo():
                     if not variables['poster'].get().strip():
                         messagebox.showinfo('Fotografía','Ya estás usando la imagen de ejemplo.',parent=gallery_win)
