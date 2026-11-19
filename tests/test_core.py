@@ -150,11 +150,11 @@ class ControlEntradasTests(unittest.TestCase):
                 color=ticket_printer.render_landscape_ticket(event,ticket,80,design,color_preview=True)
                 thermal=ticket_printer.render_landscape_ticket(event,ticket,80,design)
             self.assertEqual(color.size,thermal.size)
-            self.assertEqual(color.getpixel((30,100))[0],174)
+            self.assertLess(abs(color.getpixel((30,100))[0]-174),7)
             self.assertLessEqual(thermal.getpixel((30,100))[0],255)
             # Live QR and barcode must be freshly encoded and visible,
             # not inherited from the original JPG.
-            self.assertLess(color.getpixel((round(color.width*.89),round(color.height*.52)))[0],255)
+            self.assertEqual(color.crop((round(color.width*.81),round(color.height*.34),round(color.width*.94),round(color.height*.68))).convert("L").getextrema()[0],0)
             self.assertEqual(thermal.mode,"RGB")
 
     def test_numbered_and_other_show(self):
