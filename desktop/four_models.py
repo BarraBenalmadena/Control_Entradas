@@ -261,13 +261,13 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
             paint_logo(school,(624,25,828,107))
     elif council is not None:
         # JPG municipal panorámico completo: zona superior derecha independiente.
-        paint_logo(council,(597,23,828,119))
+        paint_logo(council,(569,22,833,121))
         if school is not None:
             paint_logo(school,(header_start,31,header_start+70,105))
             name_left=header_start+77
         else:
             name_left=header_start+5
-        name_right=589
+        name_right=561
     elif school is not None:
         paint_logo(school,(header_start,22,header_start+85,119))
         name_left=header_start+93
