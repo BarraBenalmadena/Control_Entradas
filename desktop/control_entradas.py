@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.21"
+VERSION = "2.22"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.21 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.22 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -804,13 +804,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · v2.21')
+        win.title('Diseñador de entradas · v2.22')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='4 MODELOS PRINCIPALES · A / B / C / D',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='8 MODELOS PRINCIPALES · A / B / C / D / E / F / G / H',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -885,7 +885,14 @@ def launch_gui():
         notebook.add(page_print,text='  1 · Impresión por lotes  ')
         notebook.add(page_design,text='  2 · Diseñar entrada  ')
         ticket_group=ttk.LabelFrame(page_print,text='Intervalo de entradas',padding=12)
-        ticket_group.pack(fill='x',pady=(0,9))
+        ticket_group.pack(fill='x',pady=(0,6))
+        # Las acciones de impresión deben estar siempre visibles, nunca en
+        # la fila inferior que se desborda fuera de la ventana de 1000 px.
+        print_actions=ttk.LabelFrame(page_print,text='ENVIAR ENTRADAS A LA IMPRESORA ZYWELL',padding=9)
+        print_actions.pack(fill='x',pady=(0,8))
+        ttk.Label(print_actions,text='Selecciona número inicial y cantidad; pulsa IMPRIMIR LOTE. Se pedirá confirmación.').pack(anchor='w',pady=(0,7))
+        print_buttons=ttk.Frame(print_actions)
+        print_buttons.pack(fill='x')
         ttk.Label(ticket_group,text='Desde número').grid(row=0,column=0,sticky='w',pady=4)
         tk.Spinbox(ticket_group,from_=1,to=event['capacity'],width=9,textvariable=start_num).grid(row=0,column=1,padx=(7,20),sticky='w')
         ttk.Label(ticket_group,text='Cantidad a imprimir').grid(row=0,column=2,sticky='w')
@@ -948,7 +955,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Modelo principal (4 disponibles)',
+            'plantilla':'Modelo principal (8 disponibles)',
             'foto_centro_x_pct':'Centrar foto horizontal (%) · 0 izquierda, 100 derecha',
             'foto_centro_y_pct':'Centrar foto vertical (%) · 0 arriba, 100 abajo',
             'foto_zoom_pct':'Ampliación de la foto (%) · 60–250',
@@ -1139,7 +1146,7 @@ def launch_gui():
                 option_controls.pack(fill='x',pady=(0,4))
                 photo_controls=ttk.Frame(gallery_controls)
                 photo_controls.pack(fill='x',pady=(0,4))
-                ttk.Label(group_controls,text='4 modelos A–D · Los anteriores se conservan archivados').pack(side='left',padx=5)
+                ttk.Label(group_controls,text='8 modelos A–H · Históricos archivados').pack(side='left',padx=5)
                 def restore_default_photo():
                     if not variables['poster'].get().strip():
                         messagebox.showinfo('Fotografía','Ya estás usando la imagen de ejemplo.',parent=gallery_win)
@@ -1174,9 +1181,9 @@ def launch_gui():
                             open_file(Path(target))
                     except Exception as ex:
                         messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
-                ttk.Button(group_controls,text='GUARDAR 4 MODELOS A4',
+                ttk.Button(group_controls,text='GUARDAR 8 MODELOS A4',
                            command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='IMPRIMIR A4 · 4 MODELOS',
+                ttk.Button(group_controls,text='IMPRIMIR A4 · 8 MODELOS',
                            command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
@@ -1340,17 +1347,18 @@ def launch_gui():
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
         ttk.Button(actions,text='PRUEBA A4 (IMPRESORA DE OFICINA)',
                    command=paper_a4_proof).pack(side='left',padx=4)
-        ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
-        ttk.Button(actions,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=3)
+        ttk.Button(print_buttons,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=4)
+        ttk.Button(print_buttons,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=4)
         def one_test_ticket():
             # Prints ONE genuine existing ticket with its own ID and QR.
             # This is not a dummy; the operator must export the signed JSON.
             qty.set('1')
             print_batch()
-        ttk.Button(actions,text='IMPRIMIR 1 PRUEBA (REAL)',
+        ttk.Button(print_buttons,text='IMPRIMIR 1 ENTRADA (REAL)',
                    command=one_test_ticket).pack(side='left',padx=4)
-        print_button=ttk.Button(actions,text='IMPRIMIR LOTE',command=print_batch,style='Action.TButton')
-        print_button.pack(side='right',padx=3)
+        print_button=ttk.Button(print_buttons,text='IMPRIMIR LOTE EN ZYWELL',
+                   command=print_batch,style='Action.TButton')
+        print_button.pack(side='left',padx=4)
         ttk.Label(outer,text='Primero calibra con la tira de prueba. Usa el modo ZYWELL compatible; si no corta, necesitamos el modelo exacto.',foreground='#7a4630').pack(anchor='w',pady=8)
 
     def open_seat_plan():
