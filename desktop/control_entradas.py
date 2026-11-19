@@ -763,7 +763,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · ZYWELL · v2.16')
+        win.title('Diseñador de entradas · ZYWELL · v2.17')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
@@ -806,7 +806,8 @@ def launch_gui():
             'foto_zoom_pct':tk.StringVar(value=str(config.get('foto_zoom_pct','100'))),
             'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')),
             'estilo_avisos':tk.StringVar(value=config.get('estilo_avisos','Según modelo')), 
-            'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
+            'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Pequeños')),
+            'estilo_escudo':tk.StringVar(value=config.get('estilo_escudo','Solo escudo')),
             'posicion_logos':tk.StringVar(value=config.get('posicion_logos','Según plantilla')),
             'margen_izquierdo_mm':tk.StringVar(value=str(config.get('margen_izquierdo_mm','2'))),
             'margen_derecho_mm':tk.StringVar(value=str(config.get('margen_derecho_mm','2'))),
@@ -896,6 +897,7 @@ def launch_gui():
             'plantilla':'Diseño (30 nuevos + 25 anteriores + 36 básicos)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
+            'estilo_escudo':'Escudo municipal en catálogo nuevo',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
             'foto_centro_x_pct':'Centrar foto horizontal (%) · 0 izquierda, 100 derecha',
             'foto_centro_y_pct':'Centrar foto vertical (%) · 0 arriba, 100 abajo',
@@ -929,6 +931,7 @@ def launch_gui():
             'modo_impresion':('Normal','Blanco económico'),
             'estilo_avisos':('Según modelo','B · Recuadro','D · Separadores','Clásico'),
             'tamano_logos':ticket_printer.LOGO_SIZES,
+            'estilo_escudo':('Solo escudo','Logo completo'),
             'margen_izquierdo_mm':margin_choices,
             'margen_derecho_mm':margin_choices,
             'margen_superior_mm':margin_choices,
@@ -964,7 +967,7 @@ def launch_gui():
         art.columnconfigure(1,weight=1)
         ttk.Label(designer_body,text='Izquierda y derecha son los extremos LARGOS del ticket horizontal (antes y después del corte). '
                                     'El máximo permitido es 18 mm por lado. Superior e inferior ajustan el ancho imprimible. '
-                                    '«Según plantilla» sitúa los logotipos de manera distinta en cada diseño. '
+                                    'En catálogo nuevo, «Solo escudo» reduce el logotipo municipal para ampliar el texto central. '
                                     '«Fondo suave» mantiene la imagen suavizada detrás del texto. '
                                     'El margen del ticket y la distancia física de la cuchilla son ajustes diferentes.',
                   wraplength=890,justify='left').pack(anchor='w',pady=10)
@@ -1011,6 +1014,8 @@ def launch_gui():
             ticket_printer._setting_number(d,'foto_zoom_pct',100,60,250)
             for field in ('tamano_letra_pct','tamano_cabecera_pct','tamano_fecha_pct'):
                 ticket_printer._setting_number(d,field,100,70,140)
+            if d['estilo_escudo'] not in ('Solo escudo','Logo completo'):
+                raise ValueError('Elige Solo escudo o Logo completo.')
             if d['posicion_logos'] not in ticket_printer.LOGO_POSITIONS:
                 raise ValueError('Posición de logos no reconocida.')
             if save:
