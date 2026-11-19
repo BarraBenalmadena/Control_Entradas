@@ -130,6 +130,33 @@ class ControlEntradasTests(unittest.TestCase):
             self.assertTrue(destination.read_bytes().startswith(b'%PDF-'))
             self.assertGreater(destination.stat().st_size,10000)
 
+    def test_exact_jpg_template_keeps_reference_and_replaces_sample_codes(self):
+        from unittest.mock import patch
+        from PIL import Image, ImageDraw
+        from pathlib import Path
+        import tempfile
+        from catalog_models import CATALOG_NAMES
+        eid=app.create_event("FESTIVAL DE NAVIDAD","2026-11-16T19:00","libre",2)
+        event,ticket=app.get_ticket(eid,1)
+        with tempfile.TemporaryDirectory() as folder:
+            src=Path(folder)/"reference.jpg"
+            background=Image.new("RGB",(1080,576),"white")
+            painter=ImageDraw.Draw(background)
+            painter.rectangle((0,0,180,575),fill=(174,20,90))
+            painter.rectangle((700,0,745,200),fill=(255,215,0))
+            background.save(src,quality=95)
+            design={"plantilla":CATALOG_NAMES[0]}
+            with patch("ticket_printer.catalog_asset",return_value=src):
+                color=ticket_printer.render_landscape_ticket(event,ticket,80,design,color_preview=True)
+                thermal=ticket_printer.render_landscape_ticket(event,ticket,80,design)
+            self.assertEqual(color.size,thermal.size)
+            self.assertEqual(color.getpixel((30,100))[0],174)
+            self.assertLessEqual(thermal.getpixel((30,100))[0],255)
+            # Live QR and barcode must be freshly encoded and visible,
+            # not inherited from the original JPG.
+            self.assertLess(color.getpixel((round(color.width*.89),round(color.height*.52)))[0],255)
+            self.assertEqual(thermal.mode,"RGB")
+
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
         self.assertEqual([x for x in app.list_events() if x["id"] == e][0]["capacity"],6)
