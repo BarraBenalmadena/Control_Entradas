@@ -171,6 +171,29 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertNotEqual(small.crop((300,140,790,238)).tobytes(),
                             large.crop((300,140,790,238)).tobytes())
 
+    def test_office_printer_is_distinct_and_a4_page_is_fitted(self):
+        from unittest.mock import patch
+        names=['HP LaserJet M404','ZYWELL POS-80','Microsoft Print to PDF']
+        with patch.object(ticket_printer,'list_windows_printers',return_value=names):
+            self.assertEqual(ticket_printer.office_printers(),
+                             ['HP LaserJet M404','Microsoft Print to PDF'])
+        rect=ticket_printer._fit_page_in_printer(595,842,2400,3300)
+        self.assertGreaterEqual(rect[0],0)
+        self.assertGreaterEqual(rect[1],0)
+        self.assertLessEqual(rect[2],2400)
+        self.assertLessEqual(rect[3],3300)
+        self.assertAlmostEqual((rect[2]-rect[0])/(rect[3]-rect[1]),
+                               595/842,places=2)
+        with self.assertRaises(ValueError):
+            ticket_printer._fit_page_in_printer(0,842,2400,3300)
+
+    def test_thirty_models_active_and_legacy_saved_for_recovery(self):
+        from modern_catalog import MODELS
+        from catalog_models import CATALOG_NAMES
+        self.assertEqual(len(MODELS),30)
+        self.assertEqual(len(CATALOG_NAMES),25)
+        self.assertEqual(len(ticket_printer.TEMPLATES),36)
+
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
         from unittest.mock import patch
