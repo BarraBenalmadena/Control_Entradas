@@ -154,10 +154,14 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     is_wide=ayto is not None and ayto.width/max(1,ayto.height)>=2.1
     logo_position=str(design.get('posicion_logos','Según plantilla'))
     if is_wide:
-        # Wide uploaded Education logo takes priority: no duplicate caption.
-        area=(288,13,797,112) if centro is None else (285,13,725,112)
+        # Wide logo and editable school name share the available header.
+        # Neither is stretched; both remain inside their own safe box.
+        area=(283,15,553,111)
         draw_logo(ayto,area)
-        if centro is not None:draw_logo(centro,(739,23,796,107))
+        right=744 if centro is not None else 794
+        center(header,(560,17,right,75),20,'#152b47',3,mini=10)
+        center(subtitle,(561,76,right,110),16,color,2,mini=10)
+        if centro is not None:draw_logo(centro,(746,20,796,106))
     else:
         if ayto is not None:
             pos=(281,21,352,107) if logo_position!='Derecha' else (739,21,797,107)
