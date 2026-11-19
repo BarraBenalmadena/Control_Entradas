@@ -125,36 +125,136 @@ def iso_now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def create_event(name: str, start_time: str, mode: str, capacity: int, rows_count: int = 0, seats_per_row: int = 0):
+def validate_event_fields(name: str, start_time: str, mode: str,
+                          capacity: int, rows_count: int = 0,
+                          seats_per_row: int = 0):
+    """Validación compartida entre crear y modificar una función."""
     name = name.strip()
     if not name or len(name) > 120:
         raise ValueError("Indica un nombre de 1 a 120 caracteres.")
     datetime.fromisoformat(start_time)
     if mode not in ("libre", "numerada"):
         raise ValueError("Modalidad inválida.")
+    capacity = int(capacity)
+    rows_count = int(rows_count)
+    seats_per_row = int(seats_per_row)
     if mode == "numerada":
         if rows_count < 1 or seats_per_row < 1:
             raise ValueError("Indica filas y butacas por fila.")
         capacity = rows_count * seats_per_row
     if capacity < 1 or capacity > 5000:
         raise ValueError("El aforo debe estar entre 1 y 5000.")
+    return name, start_time, mode, capacity, rows_count, seats_per_row
+
+
+def _create_signed_ticket(conn, event_id: str, number: int,
+                          mode: str, seats_per_row: int):
+    ticket_id = uuid.uuid4().hex
+    seat = None
+    if mode == "numerada":
+        row = (number - 1) // seats_per_row + 1
+        seat_number = (number - 1) % seats_per_row + 1
+        seat = f"Fila {row:02d} · Butaca {seat_number:02d}"
+    payload = json.dumps(
+        {"v": 1, "id": ticket_id, "e": event_id, "n": number, "s": seat},
+        ensure_ascii=False, separators=(",", ":"))
+    payload64 = b64u(payload.encode("utf-8"))
+    signed = PRIVATE_KEY.sign(payload64.encode("ascii"), ec.ECDSA(hashes.SHA256()))
+    qr = "CE1." + payload64 + "." + b64u(signed)
+    conn.execute("INSERT INTO tickets(id, event_id, number, seat_label, qr) "
+                 "VALUES (?,?,?,?,?)", (ticket_id, event_id, number, seat, qr))
+
+
+def create_event(name: str, start_time: str, mode: str, capacity: int,
+                 rows_count: int = 0, seats_per_row: int = 0):
+    name, start_time, mode, capacity, rows_count, seats_per_row = (
+        validate_event_fields(name, start_time, mode, capacity,
+                              rows_count, seats_per_row))
     event_id = uuid.uuid4().hex
     with connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("INSERT INTO events VALUES (?,?,?,?,?,?,?,?)", (event_id, name, start_time, mode, capacity, rows_count, seats_per_row, iso_now()))
         for n in range(1, capacity + 1):
-            ticket_id = uuid.uuid4().hex
-            seat = None
-            if mode == "numerada":
-                row = (n - 1) // seats_per_row + 1
-                seat_number = (n - 1) % seats_per_row + 1
-                seat = f"Fila {row:02d} · Butaca {seat_number:02d}"
-            payload = json.dumps({"v": 1, "id": ticket_id, "e": event_id, "n": n, "s": seat}, ensure_ascii=False, separators=(",", ":"))
-            payload64 = b64u(payload.encode("utf-8"))
-            signed = PRIVATE_KEY.sign(payload64.encode("ascii"), ec.ECDSA(hashes.SHA256()))
-            qr = "CE1." + payload64 + "." + b64u(signed)
-            conn.execute("INSERT INTO tickets(id, event_id, number, seat_label, qr) VALUES (?,?,?,?,?)", (ticket_id, event_id, n, seat, qr))
+            _create_signed_ticket(conn, event_id, n, mode, seats_per_row)
         conn.commit()
+    return event_id
+
+
+
+def update_event(event_id: str, name: str, start_time: str, mode: str,
+                 capacity: int, rows_count: int = 0, seats_per_row: int = 0):
+    """Corrige una función SIN crear otra ni invalidar sus códigos QR existentes.
+
+    Nombre y fecha son editables siempre. Los cambios de aforo/modalidad se
+    permiten antes de imprimir, registrar accesos o configurar butacas. Si el
+    aforo libre cambia, se conservan los QR de los números que permanecen.
+    """
+    name, start_time, mode, capacity, rows_count, seats_per_row = (
+        validate_event_fields(name, start_time, mode, capacity,
+                              rows_count, seats_per_row))
+    with connect() as conn:
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            old = conn.execute("SELECT * FROM events WHERE id=?",
+                               (event_id,)).fetchone()
+            if old is None:
+                raise ValueError("La función que deseas modificar ya no existe.")
+            changed_structure = (
+                old["mode"] != mode
+                or old["capacity"] != capacity
+                or (mode=="numerada" and
+                    (old["rows_count"]!=rows_count or
+                     old["seats_per_row"]!=seats_per_row)))
+            if changed_structure:
+                already_used = conn.execute(
+                    "SELECT COUNT(*) FROM tickets WHERE event_id=? "
+                    "AND used_at IS NOT NULL", (event_id,)).fetchone()[0]
+                printed = conn.execute(
+                    "SELECT COUNT(*) FROM ticket_print_log p "
+                    "JOIN tickets t ON p.ticket_id=t.id WHERE t.event_id=?",
+                    (event_id,)).fetchone()[0]
+                batch = conn.execute(
+                    "SELECT 1 FROM event_last_print_batch WHERE event_id=?",
+                    (event_id,)).fetchone()
+                positions = conn.execute(
+                    "SELECT COUNT(*) FROM seat_positions sp JOIN tickets t "
+                    "ON sp.ticket_id=t.id WHERE t.event_id=?",
+                    (event_id,)).fetchone()[0]
+                seatplan = conn.execute(
+                    "SELECT 1 FROM seat_plans WHERE event_id=?",
+                    (event_id,)).fetchone()
+                if already_used or printed or batch or positions or seatplan:
+                    raise ValueError(
+                        "No se puede cambiar aforo, filas ni modalidad porque "
+                        "ya existen accesos, entradas impresas o un plano de "
+                        "butacas. Sí puedes corregir nombre, fecha y hora "
+                        "sin modificar los códigos QR.")
+                if mode == old["mode"] == "libre":
+                    # Conservar ID y QR de todos los números existentes.
+                    if capacity < old["capacity"]:
+                        conn.execute("DELETE FROM tickets WHERE event_id=? "
+                                     "AND number>?", (event_id, capacity))
+                    elif capacity > old["capacity"]:
+                        for n in range(old["capacity"]+1,capacity+1):
+                            _create_signed_ticket(conn,event_id,n,mode,
+                                                  seats_per_row)
+                else:
+                    # Cambio de modalidad/filas, aún sin códigos distribuidos:
+                    # se genera una serie nueva con el MISMO ID de función.
+                    conn.execute("DELETE FROM tickets WHERE event_id=?",
+                                 (event_id,))
+                    for n in range(1,capacity+1):
+                        _create_signed_ticket(conn,event_id,n,mode,
+                                              seats_per_row)
+            conn.execute(
+                "UPDATE events SET name=?,start_time=?,mode=?,capacity=?,"
+                "rows_count=?,seats_per_row=? WHERE id=?",
+                (name,start_time,mode,capacity,rows_count,seats_per_row,
+                 event_id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     return event_id
 
 
