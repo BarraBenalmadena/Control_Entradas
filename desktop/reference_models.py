@@ -136,25 +136,34 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     municipal=_logo(tp,design,"logo_ayto")
     educational=_logo(tp,design,"logo_centro")
     begin=258 if variant!=2 else 301
+    factor=tp._setting_number(design,"tamano_logo_pct",135,100,160)
     is_short=municipal is not None and municipal.width <= municipal.height*1.65
     if is_short:
-        real_logo(municipal,(begin,16,begin+78,132))
-        left=begin+82
-        right=816 if educational is None else 665
+        logo_width=min(126,round(105*factor/135))
+        real_logo(municipal,(begin,7,begin+logo_width,137))
+        left=begin+logo_width+11
         if educational is not None:
-            real_logo(educational,(669,23,816,109))
+            real_logo(educational,(710,18,816,125))
+            right=701
+        else:
+            right=816
     elif municipal is not None:
-        real_logo(municipal,(640,21,815,118))
-        left=begin+8
-        right=635
+        wide_width=min(259,round(228*factor/135))
+        real_logo(municipal,(816-wide_width,8,816,135))
+        left=begin+6
+        right=810-wide_width
         if educational is not None:
-            real_logo(educational,(begin,26,begin+70,116))
-            left=begin+76
+            real_logo(educational,(begin,18,begin+76,120))
+            left=begin+83
     elif educational is not None:
-        real_logo(educational,(begin,21,begin+79,120))
-        left=begin+84;right=816
+        real_logo(educational,(begin,10,begin+110,133))
+        left=begin+118
+        right=816
     else:
         left=begin+6;right=816
+    if right-left<145:
+        raise ValueError("No hay espacio para ambos logos y el nombre "
+                         "de la escuela. Reduce el logotipo o usa uno solo.")
     txt(design.get("cabecera") or "Escuela Municipal de Música y Danza",
         (left,18,right,81),31,NAVY,2,14,head_pct)
     txt(design.get("subtitulo") or "Arroyo de la Miel",
