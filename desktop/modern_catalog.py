@@ -81,8 +81,10 @@ def install_reference_docx(filename):
             # cuatro siguientes tienen margen alrededor del ticket.
             top=.035 if source_num<=4 else .15
             bottom=.94 if source_num<=4 else .88
-            # Solo motivo izquierdo: no copiar avisos ni textos del ejemplo.
-            right=.17 if source_num<=4 else .19
+            # Recorte estricto del motivo fotográfico original. El rango
+            # anterior (.17/.19) dejaba letras, iconos y cajas impresas del
+            # Word dentro de las fotos, que luego se superponían al nuevo diseño.
+            right=.145
             region=photo.crop((round(w*.016),round(h*top),
                                round(w*right),round(h*bottom)))
             # Mantener aspecto original: el lienzo del modelo lo adapta
