@@ -1141,114 +1141,125 @@ def launch_gui():
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
         def gallery(collection='catalogo'):
+            """Galería de cuatro diseños por pantalla, sin arrastrar ventanas."""
             try:
                 numbers=valid_range()
                 if not numbers:return
                 d=current_design(save=True)
                 ev,tkdata=get_ticket(event_id,numbers[0])
-                gallery_win=tk.Toplevel(win)
-                gallery_win.title('Elegir modelo de ticket')
-                gallery_win.geometry('1090x700')
-                gallery_win.minsize(850,530)
-                shell=ttk.Frame(gallery_win,padding=7);shell.pack(fill='both',expand=True)
-                viewport=tk.Canvas(shell,highlightthickness=0)
-                scrollbar=ttk.Scrollbar(shell,orient='vertical',command=viewport.yview)
-                viewport.configure(yscrollcommand=scrollbar.set)
-                viewport.pack(side='left',fill='both',expand=True)
-                scrollbar.pack(side='right',fill='y')
-                inner=ttk.Frame(viewport)
-                wid=viewport.create_window((0,0),window=inner,anchor='nw')
-                inner.bind('<Configure>',lambda *_:viewport.configure(scrollregion=viewport.bbox('all')))
-                viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
-                gallery_controls=ttk.Frame(shell)
-                gallery_controls.pack(fill='x',before=viewport)
-                group_controls=ttk.Frame(gallery_controls)
-                group_controls.pack(fill='x',pady=(0,4))
-                option_controls=ttk.Frame(gallery_controls)
-                option_controls.pack(fill='x',pady=(0,4))
-                photo_controls=ttk.Frame(gallery_controls)
-                photo_controls.pack(fill='x',pady=(0,4))
-                ttk.Label(group_controls,text='8 modelos A–H · Históricos archivados').pack(side='left',padx=5)
-                def restore_default_photo():
-                    if not variables['poster'].get().strip():
-                        messagebox.showinfo('Fotografía','Ya estás usando la imagen de ejemplo.',parent=gallery_win)
-                        return
-                    if not messagebox.askyesno('Volver a la foto del modelo',
-                         '¿Quitar el JPG personalizado de esta función y usar las imágenes '
-                         'de ejemplo de los modelos?\n\nEl archivo original no se borrará.',
-                         parent=gallery_win):
-                        return
-                    variables['poster'].set('')
-                    gallery_win.destroy()
-                    gallery('catalogo')
-                ttk.Button(photo_controls,text='USAR FOTO DE EJEMPLO',
-                    command=restore_default_photo).pack(side='left',padx=4)
-                ttk.Label(photo_controls,
-                    text='JPG adjuntado → sustituye la foto izquierda; sin JPG → foto de ejemplo.'
-                    ).pack(side='left',padx=8)
                 templates=FOUR_MODELS
-                def create_printable_catalog(print_now=False):
+                popup=tk.Toplevel(win)
+                popup.title('Elegir diseño de entrada · 12 modelos')
+                sw=popup.winfo_screenwidth()
+                sh=popup.winfo_screenheight()
+                gw=min(1150,max(760,sw-80))
+                gh=min(800,max(590,sh-100))
+                popup.geometry(f'{gw}x{gh}+{max(0,(sw-gw)//2)}+{max(0,(sh-gh)//3)}')
+                popup.minsize(740,560)
+                popup.transient(win)
+                popup.grab_set()
+                shell=ttk.Frame(popup,padding=8)
+                shell.pack(fill='both',expand=True)
+                header=ttk.Frame(shell)
+                header.pack(fill='x',pady=(0,4))
+                ttk.Label(header,text='12 MODELOS · A–L',
+                    font=('Segoe UI',13,'bold')).pack(side='left')
+                def catalog_pdf(print_now=False):
                     try:
                         spec=current_design(save=False)
-                        target=(DATA_DIR/'Catalogo_Entradas_A4.pdf') if print_now else filedialog.asksaveasfilename(
-                            parent=gallery_win,title='Guardar catálogo para compañeros',
-                            initialfile='Catalogo_Entradas_A4.pdf',defaultextension='.pdf',
-                            filetypes=[('PDF A4','*.pdf')])
-                        if not target:return
-                        ticket_printer.export_catalog_pdf(ev,tkdata,Path(target),spec,
-                                  templates,width_mm=int(roll.get()),length_mm=ticket_length())
                         if print_now:
-                            print_office_pdf(Path(target),gallery_win)
+                            target=DATA_DIR/'Catalogo_12_modelos_A4.pdf'
+                        else:
+                            name=filedialog.asksaveasfilename(
+                                parent=popup,title='Guardar catálogo A4',
+                                initialfile='Catalogo_12_modelos_A4.pdf',
+                                defaultextension='.pdf',
+                                filetypes=[('PDF','*.pdf')])
+                            if not name:return
+                            target=Path(name)
+                        ticket_printer.export_catalog_pdf(
+                            ev,tkdata,Path(target),spec,
+                            templates,width_mm=int(roll.get()),
+                            length_mm=ticket_length())
+                        if print_now:
+                            print_office_pdf(Path(target),popup)
                         else:
                             open_file(Path(target))
-                    except Exception as ex:
-                        messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
-                ttk.Button(group_controls,text='GUARDAR 8 MODELOS A4',
-                           command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='IMPRIMIR A4 · 8 MODELOS',
-                           command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
-                # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
-                for i,template in enumerate(templates):
-                    copy=dict(d);copy['plantilla']=template
-                    try:
-                        pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
-                                                  length_mm=ticket_length(),color_preview=True)
-                    except FileNotFoundError as missing:
-                        # Una plantilla antigua sin su JPG nunca debe impedir
-                        # abrir los demás modelos disponibles.
-                        unavailable=ttk.LabelFrame(inner,text=template,padding=8)
-                        unavailable.grid(row=i//2,column=i%2,padx=6,pady=6,sticky='nsew')
-                        ttk.Label(unavailable,text='Falta la imagen original de este modelo.',
-                            foreground='#9b3333').pack(anchor='w')
-                        ttk.Label(unavailable,text=str(missing),
-                            wraplength=400).pack(anchor='w',pady=7)
-                        continue
-                    art_w,art_h=470,248
-                    pic.thumbnail((art_w,art_h),Image.Resampling.LANCZOS)
-                    paper=Image.new('RGB',(484,264),'#ececec')
-                    x=(paper.width-pic.width)//2
-                    y=(paper.height-pic.height)//2
-                    paper.paste(pic,(x,y))
-                    from PIL import ImageDraw
-                    ImageDraw.Draw(paper).rectangle((x,y,x+pic.width-1,y+pic.height-1),outline='#333333',width=1)
-                    photo=ImageTk.PhotoImage(paper)
-                    box=ttk.LabelFrame(inner,text=template,padding=7)
-                    box.grid(row=i//2,column=i%2,padx=6,pady=6,sticky='nsew')
-                    thumb=ttk.Label(box,image=photo)
-                    thumb.image=photo
-                    thumb.pack(anchor='center')
-                    ttk.Label(box,text=f'Papel: {roll.get()} mm  ·  Largo: {ticket_length()} mm  ·  Sin recortar',
-                              foreground='#42586a').pack(anchor='center',pady=(2,0))
-                    def choose(t=template):
-                        variables['plantilla'].set(t)
-                        variables['modo_impresion'].set(d.get('modo_impresion','Normal'))
-                        notebook.select(page_design)
-                        note.set(f'Diseño seleccionado: {t}. Puedes ajustar el cartel, tamaño de logos y guardar.')
-                        gallery_win.destroy()
-                    ttk.Button(box,text='Seleccionar este diseño',command=choose).pack(fill='x',pady=(6,0))
-                inner.columnconfigure(0,weight=1);inner.columnconfigure(1,weight=1)
-            except Exception as ex:
-                messagebox.showerror('Galería de diseños',str(ex),parent=win)
+                    except Exception as error:
+                        messagebox.showerror('Catálogo',str(error),parent=popup)
+                ttk.Button(header,text='IMPRIMIR CATÁLOGO A4',
+                    command=lambda:catalog_pdf(True)).pack(side='right',padx=4)
+                ttk.Button(header,text='GUARDAR PDF A4',
+                    command=lambda:catalog_pdf(False)).pack(side='right',padx=4)
+                ttk.Label(shell,text='Los QR y códigos de barras se generan con datos reales. '
+                    'Tu JPG ocupa el panel de fotografía correspondiente.',
+                    wraplength=1050,foreground='#37566c').pack(anchor='w',pady=(0,5))
+                body=ttk.Frame(shell)
+                body.pack(fill='both',expand=True)
+                body.columnconfigure(0,weight=1)
+                body.columnconfigure(1,weight=1)
+                body.rowconfigure(0,weight=1)
+                body.rowconfigure(1,weight=1)
+                nav=ttk.Frame(shell)
+                nav.pack(fill='x',pady=(5,0))
+                page=tk.IntVar(value=0)
+                pages=(len(templates)+3)//4
+                page_text=tk.StringVar()
+                def choose(template):
+                    variables['plantilla'].set(template)
+                    notebook.select(page_design)
+                    note.set('Diseño seleccionado: '+template+
+                             '. Comprueba la vista previa y guarda el diseño.')
+                    popup.destroy()
+                def show_page():
+                    for child in body.winfo_children():
+                        child.destroy()
+                    offset=page.get()*4
+                    page_text.set(f'Página {page.get()+1} de {pages}')
+                    previous.configure(state='normal' if page.get()>0 else 'disabled')
+                    following.configure(state='normal' if page.get()<pages-1 else 'disabled')
+                    thumb_width=min(480,max(315,(gw-65)//2))
+                    thumb_height=min(206,max(118,(gh-265)//2-48))
+                    for i,template in enumerate(templates[offset:offset+4]):
+                        col=i%2
+                        row=i//2
+                        card=ttk.LabelFrame(body,text=template,padding=5)
+                        card.grid(row=row,column=col,padx=5,pady=3,sticky='nsew')
+                        current=dict(d,plantilla=template)
+                        try:
+                            picture=ticket_printer.render_landscape_ticket(
+                                ev,tkdata,int(roll.get()),current,
+                                length_mm=ticket_length(),color_preview=True)
+                            picture.thumbnail((thumb_width,thumb_height),
+                                              Image.Resampling.LANCZOS)
+                            photo=ImageTk.PhotoImage(picture)
+                            label=ttk.Label(card,image=photo)
+                            label.image=photo
+                            label.pack(anchor='center',pady=2)
+                        except Exception as error:
+                            ttk.Label(card,text='No se puede mostrar: '+str(error),
+                                wraplength=thumb_width,foreground='#9b3333').pack(
+                                    anchor='w',pady=12)
+                        ttk.Label(card,text=f'Rollo {roll.get()} mm · Largo {ticket_length()} mm',
+                                  foreground='#37576c').pack(pady=(2,1))
+                        ttk.Button(card,text='SELECCIONAR ESTE DISEÑO',
+                            command=lambda t=template:choose(t)).pack(
+                                fill='x',pady=(3,1))
+                def change_page(step):
+                    page.set(max(0,min(pages-1,page.get()+step)))
+                    show_page()
+                previous=ttk.Button(nav,text='◀ ANTERIORES',
+                                    command=lambda:change_page(-1))
+                previous.pack(side='left',padx=5)
+                ttk.Label(nav,textvariable=page_text,
+                          font=('Segoe UI',11,'bold')).pack(side='left',padx=15)
+                following=ttk.Button(nav,text='SIGUIENTES ▶',
+                                     command=lambda:change_page(1))
+                following.pack(side='left',padx=5)
+                ttk.Button(nav,text='Cerrar',command=popup.destroy).pack(side='right',padx=5)
+                show_page()
+            except Exception as error:
+                messagebox.showerror('Galería de diseños',str(error),parent=win)
         def pdf_single():
             numbers=valid_range()
             if not numbers:return
