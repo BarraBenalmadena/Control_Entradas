@@ -282,22 +282,27 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     logo_setting=str(design.get('tamano_logos','Pequeños'))
     crest_w={'Pequeños':52,'Medianos':62,'Grandes':72}.get(logo_setting,52)
     crest_mode=str(design.get('estilo_escudo','Solo escudo'))
+    text_left=283+crest_w+12
     if ayto is not None:
-        emblem=ayto
-        # Los archivos institucionales horizontales suelen contener
-        # escudo + leyenda; el usuario quiere únicamente el escudo.
-        if crest_mode=='Solo escudo' and emblem.width>emblem.height*1.6:
-            emblem=emblem.crop((0,0,max(1,round(emblem.width*.28)),emblem.height))
-        draw_logo(emblem,(283,17,283+crest_w,108))
+        wide=ayto.width>ayto.height*1.6
+        if crest_mode=='Logo completo' and wide:
+            # Alternativa explícita: mantener el logo panorámico entero.
+            draw_logo(ayto,(283,17,522,108))
+            text_left=533
+        else:
+            emblem=ayto
+            # Los logos horizontales suelen llevar escudo + leyenda;
+            # el modo predeterminado usa solo el motivo del escudo.
+            if wide:
+                emblem=emblem.crop((0,0,max(1,round(emblem.width*.28)),emblem.height))
+            draw_logo(emblem,(283,17,283+crest_w,108))
     else:
         center('AYTO.',(281,46,281+crest_w,84),17,color,1,mini=10)
     right=792
     if centro is not None:
         right=746
         draw_logo(centro,(750,20,795,105))
-    # El área libre tras reducir el escudo se convierte en texto útil;
-    # ninguna caja cubre el texto de la escuela.
-    text_left=283+crest_w+12
+    # La anchura libre se dedica a texto, nunca a un hueco vacío de logo.
     center(header,(text_left,18,right,78),29,'#152b47',
            lines=2,mini=15,factor=header_factor)
     center(subtitle,(text_left,80,right,111),20,color,
