@@ -115,13 +115,13 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     crop=fitted.crop((dx,dy,dx+pw,dy+ph))
     # Edge function changes the actual silhouette, not just accent color.
     if variant==0:
-        edge=lambda y:112+220*max(0,math.sin(math.pi*y/576))**1.3
+        edge=lambda y:112+155*max(0,math.sin(math.pi*y/576))**1.3
     elif variant==1:
         edge=lambda y:135+116*max(0,math.sin(math.pi*y/576))
     elif variant==2:
         edge=lambda y:180+120*y/576
     else:
-        edge=lambda y:147+180*y/576
+        edge=lambda y:147+120*y/576
     mask=Image.new("L",(pw,ph),0)
     shape=[(0,0)]+[
       (X(edge(y))-px0,Y(y)-py0) for y in range(13,563,3)
