@@ -39,6 +39,70 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertEqual(app.validate(ticket["qr"],e,"movil1")["status"], "valid")
         self.assertEqual(app.validate(ticket["qr"],e,"movil2")["status"], "used")
         self.assertEqual(app.validate(ticket["qr"]+"z",e,"movil2")["status"], "invalid")
+    def test_edit_event_name_and_date_keeps_original_valid_qr_and_access(self):
+        eid=app.create_event("Nombre con error", "2027-09-15T19:00", "libre", 3)
+        event,first=app.get_ticket(eid,1)
+        status=app.validate(first["qr"],eid,"acceso1")
+        self.assertEqual(status["status"],"valid")
+        modified=app.update_event(eid,"Nombre corregido","2027-09-16T20:00",
+                                  "libre",3)
+        self.assertEqual(modified,eid)
+        current,same=app.get_ticket(eid,1)
+        self.assertEqual(current["name"],"Nombre corregido")
+        self.assertEqual(current["start_time"],"2027-09-16T20:00")
+        self.assertEqual(same["id"],first["id"])
+        self.assertEqual(same["qr"],first["qr"])
+        self.assertIsNotNone(same["used_at"])
+        self.assertEqual(app.validate(first["qr"],eid,"acceso2")["status"],"used")
+
+    def test_edit_unprinted_free_capacity_preserves_existing_qrs(self):
+        eid=app.create_event("Aforo anterior","2027-10-01T18:00",
+                             "libre",3)
+        originals=[app.get_ticket(eid,n)[1] for n in (1,2,3)]
+        app.update_event(eid,"Aforo corregido","2027-10-01T18:00",
+                         "libre",5)
+        for ticket in originals:
+            current=app.get_ticket(eid,ticket["number"])[1]
+            self.assertEqual(current["qr"],ticket["qr"])
+            self.assertEqual(current["id"],ticket["id"])
+        self.assertEqual(len([app.get_ticket(eid,n) for n in range(1,6)]),5)
+        app.update_event(eid,"Aforo corregido","2027-10-01T18:00",
+                         "libre",2)
+        with app.connect() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM tickets WHERE event_id=?",
+                (eid,)).fetchone()[0],2)
+        self.assertEqual(app.get_ticket(eid,1)[1]["qr"],originals[0]["qr"])
+
+    def test_structural_edit_blocked_after_print_or_registered_access(self):
+        event_id=app.create_event("Función publicada",
+            "2027-11-03T19:00","libre",2)
+        original=app.get_ticket(event_id,1)[1]
+        app.record_print_submission(event_id,[1])
+        with self.assertRaisesRegex(ValueError,"No se puede cambiar"):
+            app.update_event(event_id,"Función publicada",
+                "2027-11-03T19:00","libre",3)
+        # Sí se pueden corregir nombre y fecha después de imprimir.
+        app.update_event(event_id,"Función corregida",
+            "2027-11-04T19:30","libre",2)
+        self.assertEqual(app.get_ticket(event_id,1)[1]["qr"],original["qr"])
+        self.assertEqual(app.get_ticket(event_id,1)[0]["name"],
+                         "Función corregida")
+
+    def test_numerated_geometry_edit_before_distribution(self):
+        eid=app.create_event("Sala", "2027-11-03T19:00",
+                             "numerada",1,2,2)
+        first=app.get_ticket(eid,1)[1]
+        app.update_event(eid,"Sala corregida","2027-11-03T19:00",
+                         "numerada",1,1,3)
+        _,new=app.get_ticket(eid,1)
+        self.assertEqual(new["seat_label"],"Fila 01 · Butaca 01")
+        self.assertNotEqual(first["qr"],new["qr"])
+        with app.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tickets "
+                 "WHERE event_id=?",(eid,)).fetchone()[0],3)
+        self.assertEqual(app.validate(new["qr"],eid,"m1")["status"],"valid")
+
     def test_code128_fallback_and_double_use(self):
         e=app.create_event("Acceso alternativo","2027-04-12T19:00","libre",2)
         event,ticket=app.get_ticket(e,1)
