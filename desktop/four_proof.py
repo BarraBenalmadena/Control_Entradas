@@ -8,7 +8,10 @@ import tempfile
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
 
-with tempfile.TemporaryDirectory() as folder:
+if True:
+    # Windows mantiene temporalmente abierta la base SQLite; el runner
+    # elimina los archivos al finalizar, sin forzar limpieza prematura.
+    folder=tempfile.mkdtemp(prefix='control_proof_')
     os.environ['CONTROL_ENTRADAS_DATA']=folder
     import control_entradas as app
     import ticket_printer
