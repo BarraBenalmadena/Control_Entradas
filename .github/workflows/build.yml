@@ -1,4 +1,4 @@
-name: Compilar v2.23 Windows y Android
+name: Compilar v2.24 Windows y Android
 on:
   push:
     branches: [main]
@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Guardar fuente de los 30 diseños activos y respaldo de antiguos
+      - name: Guardar fuente de 12 modelos activos y respaldo de anteriores
         uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Fuente_Verificacion
