@@ -266,7 +266,7 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     short_council = council is not None and \
         council.width <= council.height*1.65
     header_start = (277,265,328,276)[variant]
-    logo_pct=tp._setting_number(design,"tamano_logo_pct",135,100,160)
+    logo_pct=tp._setting_number(design,"tamano_logo_pct",150,100,160)
     if short_council:
         crest_width=round(98*logo_pct/135)
         crest_width=min(118,crest_width)
