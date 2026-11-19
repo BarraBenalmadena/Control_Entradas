@@ -136,7 +136,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     municipal=_logo(tp,design,"logo_ayto")
     educational=_logo(tp,design,"logo_centro")
     begin=258 if variant!=2 else 301
-    factor=tp._setting_number(design,"tamano_logo_pct",135,100,160)
+    factor=tp._setting_number(design,"tamano_logo_pct",150,100,160)
     is_short=municipal is not None and municipal.width <= municipal.height*1.65
     if is_short:
         logo_width=min(126,round(105*factor/135))
