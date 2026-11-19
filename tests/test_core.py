@@ -145,8 +145,31 @@ class ControlEntradasTests(unittest.TestCase):
             # The photo may move, but the authenticated QR is identical.
             self.assertEqual(left.crop((830,175,1050,396)).tobytes(),
                              right.crop((830,175,1050,396)).tobytes())
-            self.assertGreater(sum(1 for x in range(290,795,20)
-                                     if left.getpixel((x,65))[2]>120),4)
+            # Solo escudo: la marca institucional se concentra a la
+            # izquierda; el resto de la cabecera queda para el nombre.
+            self.assertTrue(any(left.getpixel((x,y))[2]>120
+                                for x in range(287,340,7)
+                                for y in range(27,103,7)))
+
+    def test_new_catalog_without_external_jpegs_and_with_letter_controls(self):
+        from modern_catalog import MODELS
+        from unittest.mock import patch
+        eid=app.create_event("Festival de Navidad","2027-12-10T20:00","libre",1)
+        event,ticket=app.get_ticket(eid,1)
+        with patch("modern_catalog.art_path",side_effect=FileNotFoundError("no JPG")):
+            for model in MODELS:
+                design={"plantilla":model,"estilo_escudo":"Solo escudo"}
+                image=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,design,color_preview=True)
+                self.assertEqual(image.size,(1080,576))
+            base={"plantilla":MODELS[1],"tamano_letra_pct":"70"}
+            small=ticket_printer.render_landscape_ticket(
+                event,ticket,80,base,color_preview=True)
+            base["tamano_letra_pct"]="140"
+            large=ticket_printer.render_landscape_ticket(
+                event,ticket,80,base,color_preview=True)
+        self.assertNotEqual(small.crop((300,140,790,238)).tobytes(),
+                            large.crop((300,140,790,238)).tobytes())
 
     def test_thirty_native_styles_and_unique_secure_qr_barcode(self):
         from modern_catalog import MODELS
