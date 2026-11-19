@@ -763,7 +763,7 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · ZYWELL · v2.14')
+        win.title('Diseñador de entradas · ZYWELL · v2.15')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
