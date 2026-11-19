@@ -327,7 +327,7 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
         'municipal_01':((94,50,291,79),(107,80,199,104),(224,80,287,104),
                         (108,105,285,126),(105,126,282,140),(105,140,282,149),(107,150,274,SH-1)),
         'municipal_02':((108,52,280,114),(117,115,200,140),(225,115,287,140),
-                        (109,140,279,152),None,None,(111,153,280,SH-1)),
+                        (109,140,279,152),None,None,(111,149,280,SH-1)),
         'municipal_03':((113,54,285,110),(117,111,206,131),(228,111,286,131),
                         (113,131,287,151),None,None,(111,151,282,SH-1)),
         'municipal_05':((70,53,288,92),(99,93,204,121),(226,93,286,121),
@@ -384,13 +384,13 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
         artist.rectangle(rect,fill=background)
         return background
 
-    def letters(value,box,*,size=13,color=None,lines=2):
+    def letters(value,box,*,size=13,color=None,lines=2,min_native=6):
         if box is None:return
         x0,y0,x1,y1=box
         target=(px(x0),py(y0),px(x1),py(y1))
         _center(artist,str(value),target,
                 max(9,round(size*H/SH)),bold=True,
-                lines=lines,min_size=max(8,round(6*H/SH)),
+                lines=lines,min_size=max(7,round(min_native*H/SH)),
                 fill=color or ink)
 
     # The user-supplied jpg is ONLY the poster/photo. Restrict it to the
@@ -421,25 +421,62 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
     venue=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
     no_seats=(event.get('mode')=='libre')
 
-    # Every user-editable field is REDRAWN even if it happens to equal the
-    # photograph's example data. There are no baked-in sample captions.
-    for box in (title_box,date_box,time_box,place_box,note_a,note_b):
-        clean(box)
-    letters(name,title_box,size=16 if not is_municipal else 15,
-            color=ink,lines=2)
-    letters(date_str,date_box,size=11,lines=1)
-    letters(time_str,time_box,size=11,lines=1)
-    # Use contrasting white glyphs on the existing navy/red place ribbon.
-    place_color='white' if key in ('municipal_01','municipal_02',
-                                  'municipal_05','music5_03') else ink
-    letters(venue,place_box,size=8,color=place_color,lines=2)
-    if note_a:
-        msg=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA'
-             if no_seats else 'RESPETE SU FILA Y BUTACA ASIGNADAS')
-        letters(msg,note_a,size=7,color='#12233c',lines=1)
-    if note_b:
-        letters('SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA',
-                note_b,size=6.5,color='#12233c',lines=2)
+    sample_data=(name.strip().upper()=='FESTIVAL DE NAVIDAD'
+                 and date_str=='16/11/2026' and time_str=='19:00 H'
+                 and venue.strip()=='Casa de la Cultura · Arroyo de la Miel'
+                 and no_seats)
+    if not sample_data:
+        # A JPG has no editable text layers. Preserve its complete original
+        # composition for matching sample data; when fields change, renew
+        # one coherent information area, never scattered white patches.
+        dark_panel=key in ('music5_03','municipal_02','municipal_05',
+                           'municipal_19')
+        bg=('#7f1021' if key=='municipal_02' else
+            '#112f61' if key in ('music5_03','municipal_05','municipal_19')
+            else '#ffffff')
+        text_ink='#ffffff' if dark_panel else ink
+        panel_left=(105 if key=='municipal_02' else
+                    76 if key=='municipal_05' else
+                    87 if key=='municipal_19' else
+                    113 if key in ('municipal_03','municipal_11') else 95)
+        panel_top=44
+        panel_bottom=(139 if key=='municipal_19' else
+                      min(SH-17,149)) if is_municipal else 138
+        artist.rectangle((px(panel_left),py(panel_top),
+                          px(294),py(panel_bottom)),fill=bg)
+        artist.line((px(panel_left+5),py(panel_top+1),px(291),py(panel_top+1)),
+                    fill=ink if not dark_panel else '#c9d9ef',
+                    width=max(1,round(H/550)))
+        title_end=89 if key in ('municipal_02','municipal_03','municipal_11') else 74
+        letters(name,(panel_left+6,49,290,title_end),
+                size=21,color=text_ink,lines=2)
+        row_y=title_end+1
+        letters(date_str,(panel_left+12,row_y,panel_left+108,row_y+18),
+                size=12,color=text_ink,lines=1)
+        letters(time_str,(panel_left+112,row_y,289,row_y+18),
+                size=12,color=text_ink,lines=1)
+        place_y=row_y+18
+        place_h=18
+        artist.rounded_rectangle((px(panel_left+9),py(place_y),
+                                  px(290),py(place_y+place_h)),
+                 radius=max(2,round(H/185)),
+                 fill='#ffffff' if dark_panel else '#153a70')
+        letters(venue,(panel_left+12,place_y+1,287,place_y+place_h-1),
+                size=9,color='#172d50' if dark_panel else 'white',lines=2)
+        bottom=place_y+place_h+2
+        if bottom<panel_bottom-5:
+            split_y=bottom+(panel_bottom-bottom)*0.48
+            artist.rounded_rectangle((px(panel_left+9),py(bottom),
+                                      px(290),py(panel_bottom-2)),
+                    radius=max(2,round(H/240)),fill='white',
+                    outline='#9aa8bd',width=max(1,round(H/550)))
+            msg=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA'
+                 if no_seats else 'RESPETE SU FILA Y BUTACA ASIGNADAS')
+            letters(msg,(panel_left+12,bottom+1,287,split_y),
+                    size=8,color='#132740',lines=2,min_native=4)
+            letters('SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA',
+                    (panel_left+12,split_y,287,panel_bottom-2),
+                    size=8,color='#132740',lines=2,min_native=4)
 
     # Header is preserved exactly unless its text was edited.
     header=str(design.get('cabecera') or 'Escuela Municipal de Música y Danza')
@@ -474,15 +511,18 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
     artist.rectangle((px(strip_x),py(1),W-3,H-3),fill='white')
     artist.line((px(strip_x),py(1),px(strip_x),H-3),
                 fill=ink,width=max(1,round(H/300)))
+    from PIL import ImageColor
+    accent_rgb=ImageColor.getrgb(ink)
+    side_color=ink if sum(accent_rgb)/3<155 else '#142d53'
     artist.rounded_rectangle((px(strip_x+5),py(7),W-9,py(27)),
-            radius=max(2,round(H/170)),fill=ink)
+            radius=max(2,round(H/170)),fill=side_color)
     letters('CONTROL DE ACCESO',(strip_x+7,8,SW-6,26),
             size=8,color='white',lines=2)
     artist.rounded_rectangle((px(strip_x+5),py(30),W-9,py(53)),
-            radius=max(2,round(H/180)),outline=ink,
+            radius=max(2,round(H/180)),outline=side_color,
             width=max(1,round(H/300)),fill='white')
     letters(f"N.º {int(ticket['number']):04d}",
-            (strip_x+7,31,SW-6,52),size=12,color=ink,lines=1)
+            (strip_x+7,31,SW-6,52),size=12,color=side_color,lines=1)
     qr_box=(px(strip_x+5),py(56),W-9,py(min(SH-31,126)))
     maxw=qr_box[2]-qr_box[0]
     maxh=qr_box[3]-qr_box[1]
@@ -491,10 +531,10 @@ def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
                  qr_box[1]+(maxh-qr.height)//2))
     artist=ImageDraw.Draw(im)
     letters('ESCANEAR QR',(strip_x+6,min(SH-30,127),SW-6,min(SH-19,143)),
-            size=7,color=ink)
+            size=7,color=side_color)
     seat=str(ticket.get('seat_label') or '').strip()
     letters(seat if seat else '1 PERSONA',
-            (strip_x+6,SH-21,SW-7,SH-4),size=10,color=ink)
+            (strip_x+6,SH-21,SW-7,SH-4),size=10,color=side_color)
 
     # Erase the old sample Code128 entirely, then print a NEW Code128 for
     # ticket['id']; black bars with proper white quiet zones and no scaling.
