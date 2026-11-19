@@ -243,7 +243,7 @@ class ControlEntradasTests(unittest.TestCase):
             Image.new('RGB',(400,800),'#ef2040').save(poster)
             Image.new('RGB',(220,360),'#13e03d').save(short)
             Image.new('RGB',(800,170),'#2642ed').save(wide)
-            for name in FOUR:
+            for name in FOUR[:4]:
                 base={'plantilla':name,'poster':str(poster)}
                 no_logo=ticket_printer.render_landscape_ticket(
                     event,ticket,80,base,length_mm=165,color_preview=True)
@@ -276,14 +276,14 @@ class ControlEntradasTests(unittest.TestCase):
         from PIL import Image
         from tempfile import TemporaryDirectory
         from unittest.mock import patch
-        self.assertEqual(len(FOUR),4)
+        self.assertEqual(len(FOUR),8)
         eid=app.create_event('Festival de Navidad','2027-12-16T19:00','libre',2)
         event,first=app.get_ticket(eid,1)
         _,second=app.get_ticket(eid,2)
         with TemporaryDirectory() as folder:
             red=Path(folder)/'cartel_original.jpg'
             Image.new('RGB',(540,820),(243,24,34)).save(red)
-            for model in FOUR:
+            for model in FOUR[:4]:
                 spec={'plantilla':model,'poster':str(red)}
                 preview=ticket_printer.render_landscape_ticket(
                     event,first,80,spec,color_preview=True)
@@ -308,6 +308,49 @@ class ControlEntradasTests(unittest.TestCase):
                 event,first,out,{'poster':str(red)},templates=FOUR,
                 width_mm=80,length_mm=135)
             self.assertTrue(out.read_bytes().startswith(b'%PDF-'))
+
+    def test_four_new_right_photo_models_qr_monochrome_and_multipage_catalog(self):
+        from four_models import MODELS
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        import fitz
+        self.assertEqual(len(MODELS),8)
+        self.assertEqual(len(set(MODELS)),8)
+        eid=app.create_event('Concierto de Navidad','2027-12-16T19:00','libre',2)
+        event,first=app.get_ticket(eid,1)
+        _,second=app.get_ticket(eid,2)
+        with TemporaryDirectory() as folder:
+            jpg=Path(folder)/'poster_propio.jpg'
+            Image.new('RGB',(430,790),(245,25,35)).save(jpg)
+            coords=((930,230),(730,230),(70,230),(725,230))
+            for index,model in enumerate(MODELS[4:]):
+                conf={'plantilla':model,'poster':str(jpg)}
+                show=ticket_printer.render_landscape_ticket(
+                    event,first,80,conf,length_mm=165,color_preview=True)
+                self.assertEqual(show.size,(1320,576))
+                xx,yy=coords[index]
+                rgb=show.getpixel((round(xx*1320/1080),yy))
+                self.assertGreater(rgb[0],165,model)
+                self.assertLess(rgb[1],110,model)
+                normal=ticket_printer.render_landscape_ticket(
+                    event,first,80,conf,length_mm=165,color_preview=False)
+                sample=normal.getpixel((round(xx*1320/1080),yy))
+                self.assertEqual(sample[0],sample[1],model)
+                self.assertEqual(sample[1],sample[2],model)
+                other=ticket_printer.render_landscape_ticket(
+                    event,second,80,conf,length_mm=165,color_preview=True)
+                stub=(8,227) if index==0 else (844,1072)
+                aa,bb=[round(v*1320/1080) for v in stub]
+                self.assertNotEqual(show.crop((aa,172,bb,400)).tobytes(),
+                                    other.crop((aa,172,bb,400)).tobytes(),model)
+            dest=Path(folder)/'ocho_modelos.pdf'
+            ticket_printer.export_catalog_pdf(event,first,dest,
+                {'poster':str(jpg)},templates=MODELS,
+                width_mm=80,length_mm=165)
+            with fitz.open(dest) as document:
+                self.assertEqual(document.page_count,2)
+                self.assertGreater(document[0].rect.width,
+                                   document[0].rect.height)
 
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
