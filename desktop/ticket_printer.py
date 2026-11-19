@@ -295,82 +295,126 @@ def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -
 def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
                                 design: dict, length_mm: int | None,
                                 *, color_preview: bool=False) -> Image.Image:
-    """Preserve the complete user-provided JPG ticket, not an old layout.
+    """Image-based catalog, with clean independent LIVE fields.
 
-    All printed sample QR/Code128/serial numbers are covered and replaced with
-    current signed ticket credentials; old sample codes cannot grant admission.
+    A reference JPG is a flattened picture, not an editable file. Keep its
+    decoration and photography; replace the entire barcode/QR/number areas
+    rather than drawing little boxes on top of old printed sample codes.
     """
-    chosen=str(design['plantilla'])
-    source=catalog_asset(chosen)
+    source=catalog_asset(str(design['plantilla']))
     g=geometry(width_mm,length_mm,design)
     W,H=g['W'],g['H']
-    with Image.open(source) as original:
-        im=original.convert('RGB').resize((W,H),Image.Resampling.LANCZOS)
+    with Image.open(source) as src:
+        im=src.convert('RGB').resize((W,H),Image.Resampling.LANCZOS)
+
+    rx=lambda f:round(f*W)
+    ry=lambda f:round(f*H)
     paint=ImageDraw.Draw(im)
-    rx=lambda a:round(a*W)
-    ry=lambda a:round(a*H)
-    def block(rect,fill='white',radius=0):
-        x0,y0,x1,y1=rect
-        paint.rounded_rectangle((rx(x0),ry(y0),rx(x1),ry(y1)),
-                                radius=max(0,round(radius*H)),fill=fill)
-    def textline(value,rect,points=28,fill='#071b38'):
-        x0,y0,x1,y1=rect
-        _center(paint,str(value),(rx(x0),ry(y0),rx(x1),ry(y1)),
-                max(11,round(points*H/576)),bold=True,lines=2,
-                min_size=max(9,round(14*H/576)),fill=fill)
+    def rectangle(coords,fill='white',outline=None,width=1):
+        box=(rx(coords[0]),ry(coords[1]),rx(coords[2]),ry(coords[3]))
+        paint.rectangle(box,fill=fill,outline=outline,width=width)
+    def title(value,coords,size=34,fg='#09264c',lines=2):
+        box=(rx(coords[0]),ry(coords[1]),rx(coords[2]),ry(coords[3]))
+        _center(paint,str(value),box,max(12,round(size*H/576)),
+                bold=True,lines=lines,min_size=max(10,round(14*H/576)),fill=fg)
 
-    # Number labels in original examples are not functional tickets.
-    block((.783,.148,.978,.285),radius=.014)
-    textline(f"N.º {int(ticket['number']):04d}",(.791,.160,.973,.270),31)
+    # When the designer supplies a poster JPG/PNG, display it INSIDE the
+    # template's photograph panel, not as an ignored preference.
+    poster=_open_image(design.get('poster'))
+    if poster is not None:
+        region=(rx(.018),ry(.045),rx(.275),ry(.955))
+        fitted=ImageOps.fit(poster.convert('RGB'),
+                            (region[2]-region[0],region[3]-region[1]),
+                            method=Image.Resampling.LANCZOS,centering=(.5,.5))
+        mask=Image.new('L',im.size,0)
+        mask_draw=ImageDraw.Draw(mask)
+        # Most supplied references have the art/photo to the left of a
+        # diagonal/curved boundary. Limit the new poster to that region.
+        mask_draw.polygon([(rx(.022),ry(.045)),(rx(.261),ry(.045)),
+                           (rx(.222),ry(.950)),(rx(.022),ry(.950))],fill=255)
+        poster_layer=Image.new('RGB',im.size,'white')
+        poster_layer.paste(fitted,region[:2])
+        im.paste(poster_layer,(0,0),mask)
+        paint=ImageDraw.Draw(im)
 
-    # Dedicated optical quiet zone and real freshly signed QR: no interpolation.
-    block((.783,.302,.980,.735))
-    qmax_w=rx(.972)-rx(.791)
-    qmax_h=ry(.703)-ry(.318)
-    qr=_qr_image(str(ticket['qr']),qmax_w,qmax_h)
-    im.paste(qr,((rx(.783)+rx(.979)-qr.width)//2,
-                 (ry(.305)+ry(.704)-qr.height)//2))
-    paint=ImageDraw.Draw(im)
-    textline('ESCANEAR QR',(.792,.724,.970,.792),19)
-
-    # Wide Code128, physically the same bearer ID as the original printer.
-    # No template JPG barcode is ever considered valid.
-    block((.205,.819,.762,.984))
-    maxw=rx(.748)-rx(.219)
-    barcode=_code128_image(barcode_ticket_value(ticket['id']),
-                           maxw,max(22,ry(.948)-ry(.848)))
-    im.paste(barcode,((rx(.205)+rx(.762)-barcode.width)//2,ry(.848)))
-    paint=ImageDraw.Draw(im)
-
+    number=int(ticket['number'])
     date=datetime.fromisoformat(str(event['start_time']))
-    date_text=date.strftime('%d/%m/%Y')
-    time_text=date.strftime('%H:%M H')
-    title=str(event['name'])
-    place=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
+    day=date.strftime('%d/%m/%Y')
+    when=date.strftime('%H:%M H')
+    event_title=str(event['name']).strip()
+    place=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel').strip()
+    header=str(design.get('cabecera') or 'Escuela Municipal de Música y Danza').strip()
+    subheader=str(design.get('subtitulo') or 'Arroyo de la Miel').strip()
+    accent='#0d2448'
 
-    # Exact default sample typography remains 1:1. For another function,
-    # update the live values, while keeping photograph/ornaments and frame.
-    if title.strip().upper()!='FESTIVAL DE NAVIDAD':
-        block((.230,.335,.765,.480))
-        textline(title,(.235,.340,.760,.477),38)
-    if date_text!='16/11/2026' or time_text!='19:00 H':
-        block((.265,.500,.760,.635))
-        textline(date_text+'  ·  '+time_text,(.270,.504,.757,.631),29)
-    if place.strip()!='Casa de la Cultura · Arroyo de la Miel':
-        block((.256,.642,.760,.740))
-        textline(place,(.260,.647,.755,.733),22)
-    if event.get('mode')!='libre':
-        block((.250,.736,.760,.828))
-        textline('RESPETE SU FILA Y BUTACA ASIGNADAS',
-                 (.250,.741,.760,.821),19)
-    if ticket.get('seat_label'):
-        block((.797,.790,.970,.842))
-        textline(ticket['seat_label'],(.797,.795,.970,.840),18)
+    # Source JPGs contain DEMONSTRATION lettering. They cannot be edited
+    # letter by letter: if event fields differ from the sample, replace the
+    # complete information panel, leaving art and ticket border visible.
+    sample_event=(event_title.upper()=='FESTIVAL DE NAVIDAD'
+                  and day=='16/11/2026' and when=='19:00 H'
+                  and place=='Casa de la Cultura · Arroyo de la Miel'
+                  and event.get('mode')=='libre')
+    if not sample_event:
+        rectangle((.283,.292,.777,.828),'white')
+        paint.rounded_rectangle((rx(.297),ry(.305),rx(.765),ry(.811)),
+                 radius=max(3,round(.018*H)),
+                 fill='white',outline='#a7b1c0',width=max(1,H//320))
+        title(event_title,(.307,.318,.751,.464),40,accent)
+        title(day+'     '+when,(.305,.478,.751,.570),27,accent)
+        title(place,(.305,.580,.750,.655),23,accent)
+        if event.get('mode')=='libre':
+            notes=['SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
+                   'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA']
+        else:
+            notes=['RESPETE SU FILA Y BUTACA ASIGNADAS',
+                   'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA']
+        title(notes[0],(.301,.668,.751,.730),16,accent)
+        title(notes[1],(.301,.733,.751,.798),15,accent)
+    if (header!='Escuela Municipal de Música y Danza'
+            or subheader!='Arroyo de la Miel'):
+        rectangle((.309,.05,.773,.27),'white')
+        title(header,(.320,.060,.766,.172),29,accent)
+        title(subheader,(.320,.173,.764,.253),20,accent)
 
-    if color_preview:
-        return im
-    # Printer is monochrome; keep native reference layout and exact code pixels.
+    # IMPORTANT: remove the WHOLE demonstration right-hand strip, including
+    # pre-printed false QR, captions, border and N.º 0001, before rendering
+    # real ticket credentials. This prevents the double-code screenshot issue.
+    rectangle((.784,.030,.979,.972),'white')
+    paint.rounded_rectangle((rx(.798),ry(.053),rx(.965),ry(.148)),
+                            radius=max(4,ry(.014)),fill='#132d53')
+    title('CONTROL DE ACCESO',(.800,.065,.963,.140),22,'white')
+    paint.rounded_rectangle((rx(.800),ry(.166),rx(.963),ry(.281)),
+                            radius=max(4,ry(.012)),outline='#8294aa',
+                            width=max(1,H//240),fill='#f9fafb')
+    title(f"N.º {number:04d}",(.805,.173,.959,.272),29,accent)
+
+    # The QR and Code128 are generated from CURRENT signed data, not from
+    # the user's static reference photograph. Never scale after encoding.
+    qr_box=(rx(.793),ry(.302),rx(.975),ry(.700))
+    qr=_qr_image(str(ticket['qr']),
+                 qr_box[2]-qr_box[0],qr_box[3]-qr_box[1])
+    rectangle((.791,.300,.978,.705),'white')
+    im.paste(qr,(qr_box[0]+(qr_box[2]-qr_box[0]-qr.width)//2,
+                 qr_box[1]+(qr_box[3]-qr_box[1]-qr.height)//2))
+    paint=ImageDraw.Draw(im)
+    title('ESCANEAR QR',(.805,.710,.963,.767),17,accent)
+    paint.line([(rx(.806),ry(.783)),(rx(.963),ry(.783))],
+               fill='#adb8c8',width=max(1,H//330))
+    seat=str(ticket.get('seat_label') or '').strip()
+    title(seat if seat else '1 PERSONA',(.806,.793,.962,.901),26,accent)
+    title('PROHIBIDA SU VENTA',(.807,.922,.960,.955),12,accent)
+
+    # Entire bottom code strip is cleared. It must not show the previous JPG
+    # barcode through empty gaps, or be covered by the admission notes.
+    rectangle((.206,.834,.772,.979),'white')
+    max_width=rx(.751)-rx(.225)
+    code=_code128_image(barcode_ticket_value(ticket['id']),
+                        max_width,max(20,ry(.956)-ry(.859)))
+    im.paste(code,((rx(.206)+rx(.772)-code.width)//2,ry(.856)))
+
+    if color_preview:return im
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
+
 
 
 def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
