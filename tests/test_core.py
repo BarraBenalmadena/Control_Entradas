@@ -403,6 +403,47 @@ class ControlEntradasTests(unittest.TestCase):
                 self.assertEqual(doc.page_count,3)
                 self.assertGreater(doc[0].rect.width,doc[0].rect.height)
 
+    def test_municipal_logo_is_larger_in_all_twelve_models_without_moving_qr(self):
+        """El selector de 100% a 160% altera el logotipo real en A-L."""
+        from four_models import MODELS
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        event_id=app.create_event('Festival de Navidad',
+            '2027-12-21T19:00','libre',1)
+        event,ticket=app.get_ticket(event_id,1)
+        self.assertEqual(len(MODELS),12)
+        with TemporaryDirectory() as tmp:
+            cover=Path(tmp)/'cartel.jpg'
+            crest=Path(tmp)/'escudo.jpg'
+            horizontal=Path(tmp)/'marca_horizontal.jpg'
+            Image.new('RGB',(430,760),(215,18,32)).save(cover)
+            Image.new('RGB',(240,240),(15,210,36)).save(crest)
+            Image.new('RGB',(800,170),(19,33,220)).save(horizontal)
+            for model in MODELS:
+                for logo,color in ((crest,'green'),(horizontal,'blue')):
+                    params={'plantilla':model,'poster':str(cover),
+                            'logo_ayto':str(logo)}
+                    small=ticket_printer.render_landscape_ticket(
+                        event,ticket,80,
+                        {**params,'tamano_logo_pct':'100'},
+                        length_mm=165,color_preview=True)
+                    large=ticket_printer.render_landscape_ticket(
+                        event,ticket,80,
+                        {**params,'tamano_logo_pct':'160'},
+                        length_mm=165,color_preview=True)
+                    # El área coloreada crece; la fotografía y el QR permanecen.
+                    def count(img):
+                        values=img.crop((0,0,img.width,145)).getdata()
+                        if color=='green':
+                            return sum(g>130 and g>r*2 and g>b*2 for r,g,b in values)
+                        return sum(b>140 and b>r*2 and b>g*2 for r,g,b in values)
+                    self.assertGreater(count(large),count(small),
+                                       f'Logo no ampliado {model}: {color}')
+                    self.assertEqual(
+                        small.crop((round(830*1320/1080),170,1320,405)).tobytes(),
+                        large.crop((round(830*1320/1080),170,1320,405)).tobytes(),
+                        f'El QR no debe variar con tamaño logo: {model}')
+
     def test_identical_maximum_qr_across_twelve_styles_and_thermal_lengths(self):
         """Matriz intacta, igual tamaño en A-L y máxima escala real por formato."""
         from four_models import MODELS as ALL
