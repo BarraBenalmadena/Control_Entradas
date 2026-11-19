@@ -393,8 +393,8 @@ class ControlEntradasTests(unittest.TestCase):
                 self.assertEqual(sample[1],sample[2],model)
                 # Espacio QR blanco bajo la numeración: jamás una foto
                 # ni línea roja / azul puede atravesar la matriz.
-                x=round(853*1320/1080)
-                self.assertEqual(picture.getpixel((x,215)),(255,255,255),model)
+                x=round(856*1320/1080)
+                self.assertEqual(picture.getpixel((x,177)),(255,255,255),model)
             pdf=Path(folder)/'doce_modelos.pdf'
             ticket_printer.export_catalog_pdf(event,first,pdf,
                  {'poster':str(jpg),'logo_ayto':str(crest)},
