@@ -27,16 +27,21 @@ def asset_dir():
 
 
 def art_path(i):
-    folder=asset_dir()
-    p=folder/f'art_{i:02d}.jpg'
-    if p.is_file():return p
-    # Ocho fotografías originales importadas, repartidas entre 30
-    # composiciones gráficas distintas sin duplicar archivos.
-    if i>8:
-        shared=folder/f'art_{(i-1)%8+1:02d}.jpg'
-        if shared.is_file():return shared
+    root=Path(os.environ.get('CONTROL_ENTRADAS_DATA') or
+              Path.home()/'Documents'/'ControlEntradas')
+    folders=(root/'catalogo_nuevo',
+             Path(sys.executable).resolve().parent/'catalogo_nuevo',
+             Path(__file__).resolve().parent/'catalogo_nuevo')
+    # Buscar por archivo, no por primera carpeta existente: un catálogo
+    # antiguo incompleto no debe ocultar los motivos distribuidos con el EXE.
+    for folder in folders:
+        p=folder/f'art_{i:02d}.jpg'
+        if p.is_file():return p
+        if i>8:
+            shared=folder/f'art_{(i-1)%8+1:02d}.jpg'
+            if shared.is_file():return shared
     raise FileNotFoundError(
-        f'Falta art_{i:02d}.jpg. Pulsa «IMPORTAR IMÁGENES DEL WORD» en la galería.')
+        f'Falta art_{i:02d}.jpg. Pulsa «IMPORTAR 8 IMÁGENES DEL WORD» en la galería.')
 
 
 def install_reference_docx(filename):
