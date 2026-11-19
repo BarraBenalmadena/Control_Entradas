@@ -829,7 +829,7 @@ def launch_gui():
 
     def update_buttons(*_):
         state = "normal" if tree.selection() else "disabled"
-        for button in (preview_btn, save_btn, print_btn, delete_btn, zywell_btn, plan_btn, offline_btn, sync_btn):
+        for button in (edit_btn,preview_btn, save_btn, print_btn, delete_btn, zywell_btn, plan_btn, offline_btn, sync_btn):
             button.configure(state=state)
 
     def refresh():
@@ -842,18 +842,51 @@ def launch_gui():
             tree.selection_set(previous[0])
         update_buttons()
 
+    def set_editing(event_id):
+        editing_id[0]=event_id
+        create_btn.configure(text=('GUARDAR CAMBIOS' if event_id
+                                  else 'GUARDAR NUEVA FUNCIÓN'))
+        draft_status.set(
+            'Editando una función existente. GUARDAR CAMBIOS conserva sus '
+            'entradas y códigos QR; el formulario se recupera al reiniciar.'
+            if event_id else
+            'Nueva función. Los datos introducidos se guardan automáticamente '
+            'como borrador en este ordenador.')
+        draft_changed()
+
     def create():
         try:
-            stamp = datetime.strptime(date.get().strip(), "%d/%m/%Y %H:%M").isoformat(timespec="minutes")
-            event_id = create_event(name.get(), stamp, mode.get(), int(capacity.get()), int(rows.get()), int(seats.get()))
+            stamp = datetime.strptime(date.get().strip(),
+                                       "%d/%m/%Y %H:%M").isoformat(
+                                           timespec="minutes")
+            existing=editing_id[0]
+            if existing:
+                event_id=update_event(existing,name.get(),stamp,mode.get(),
+                                      int(capacity.get()),int(rows.get()),
+                                      int(seats.get()))
+                action="modificada"
+            else:
+                event_id=create_event(name.get(),stamp,mode.get(),
+                                      int(capacity.get()),int(rows.get()),
+                                      int(seats.get()))
+                action="creada"
+            set_editing(event_id)
+            persist_draft()
             refresh()
             tree.selection_set(event_id)
             tree.see(event_id)
             update_buttons()
-            helptext.set("Función guardada. Pulsa 'Vista previa' para ver las entradas, 'Guardar PDF' para exportarlas o 'Imprimir...' para elegir impresora.")
-            messagebox.showinfo("Guardado correctamente", "Función y entradas guardadas automáticamente.\n\nAhora puedes pulsar '2 · Vista previa' para verlas antes de imprimir.")
+            helptext.set(
+                f'Función {action} correctamente. Para corregir algo, '
+                'cambia el formulario y pulsa GUARDAR CAMBIOS. '
+                'No se creará otra función con el mismo nombre.')
+            messagebox.showinfo(
+                "Datos guardados",f'Función {action} correctamente.\n\n'
+                'Puedes seguir modificando estos datos y pulsar GUARDAR '
+                'CAMBIOS, o elegir NUEVA FUNCIÓN para comenzar otra.',
+                parent=root)
         except Exception as ex:
-            messagebox.showerror("No se pudo guardar", str(ex))
+            messagebox.showerror("No se pudo guardar", str(ex),parent=root)
 
     def selected_event():
         selected = tree.selection()
@@ -861,6 +894,54 @@ def launch_gui():
             messagebox.showwarning("Selecciona una función", "Haz clic sobre una función de la tabla antes de continuar.")
             return None
         return selected[0]
+
+    def edit_selected():
+        event_id=selected_event()
+        if not event_id:return
+        item=next((e for e in list_events() if e['id']==event_id),None)
+        if item is None:
+            messagebox.showerror("Editar función","La función ya no existe.",
+                                 parent=root)
+            return
+        if editing_id[0]!=event_id and name.get().strip():
+            if not messagebox.askyesno(
+                "Cargar datos guardados",
+                "Vas a cargar los datos de la función seleccionada en el "
+                "formulario. El borrador actual será sustituido. "
+                "¿Continuar?",parent=root):
+                return
+        set_editing(event_id)
+        load_into_form({
+            'name':item['name'],
+            'date':datetime.fromisoformat(item['start_time']).strftime(
+                "%d/%m/%Y %H:%M"),
+            'mode':item['mode'],
+            'capacity':str(item['capacity']),
+            'rows':str(item['rows_count']),
+            'seats':str(item['seats_per_row']),
+        })
+        persist_draft()
+        helptext.set('Modifica los campos que quieras y pulsa GUARDAR CAMBIOS. '
+                     'La función se actualizará sin duplicarse.')
+        page_canvas.yview_moveto(0)
+
+    def new_form():
+        if name.get().strip() and not messagebox.askyesno(
+            "Comenzar otra función",
+            "Se reemplazará el formulario actual por uno nuevo. "
+            "Los datos de la función ya guardada seguirán en la tabla. "
+            "¿Continuar?",parent=root):
+            return
+        set_editing(None)
+        load_into_form({
+            'name':'',
+            'date':datetime.now().strftime("%d/%m/%Y 19:00"),
+            'mode':'libre','capacity':'100','rows':'10','seats':'10'
+        })
+        persist_draft()
+        helptext.set('Introduce los datos de la nueva función. '
+                     'Se guardan automáticamente como borrador.')
+        page_canvas.yview_moveto(0)
 
     def delete_selected():
         event_id = selected_event()
@@ -1684,7 +1765,15 @@ def launch_gui():
     refresh_btn.configure(command=refresh)
     delete_btn.configure(command=delete_selected)
     tree.bind("<<TreeviewSelect>>", update_buttons)
+    tree.bind("<Double-1>",lambda _event:root.after_idle(edit_selected))
+    edit_btn.configure(command=edit_selected)
+    new_btn.configure(command=new_form)
+    set_editing(editing_id[0])
     refresh()
+    if editing_id[0] and tree.exists(editing_id[0]):
+        tree.selection_set(editing_id[0])
+        tree.see(editing_id[0])
+        update_buttons()
     try:
         server = start_server()
     except OSError as ex:
@@ -1692,6 +1781,10 @@ def launch_gui():
         return
 
     def close():
+        if draft_timer[0] is not None:
+            try:root.after_cancel(draft_timer[0])
+            except ValueError:pass
+        persist_draft()
         server.shutdown()
         server.server_close()
         root.destroy()
