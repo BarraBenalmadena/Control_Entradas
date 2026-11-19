@@ -724,17 +724,75 @@ def launch_gui():
     mode.trace_add("write", toggle_mode)
     toggle_mode()
 
+    # Borrador local: cada edición de los seis campos se conserva para poder
+    # recuperar el formulario tras cerrar Windows o pulsar otras opciones.
+    draft_file=DATA_DIR/'borrador_funcion.json'
+    fields={'name':name,'date':date,'mode':mode,'capacity':capacity,
+            'rows':rows,'seats':seats}
+    editing_id=[None]
+    draft_timer=[None]
+    loading_fields=[False]
+    def persist_draft():
+        draft_timer[0]=None
+        payload={key:var.get() for key,var in fields.items()}
+        payload['editing_event_id']=editing_id[0]
+        temporary=draft_file.with_name(draft_file.name+'.tmp')
+        try:
+            temporary.write_text(
+                json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+            os.replace(temporary,draft_file)
+        except OSError as error:
+            # Sin fingir que se ha guardado un borrador si el disco falla.
+            print(f'No se pudo guardar el borrador: {error}',file=sys.stderr)
+    def draft_changed(*_):
+        if loading_fields[0]:return
+        if draft_timer[0] is not None:
+            try:root.after_cancel(draft_timer[0])
+            except ValueError:pass
+        draft_timer[0]=root.after(600,persist_draft)
+    def load_into_form(values):
+        loading_fields[0]=True
+        try:
+            for key,var in fields.items():
+                if key in values:
+                    var.set(str(values[key]))
+        finally:
+            loading_fields[0]=False
+        draft_changed()
+    if draft_file.is_file():
+        try:
+            prior=json.loads(draft_file.read_text(encoding='utf-8'))
+            if isinstance(prior,dict):
+                load_into_form(prior)
+                remembered=prior.get('editing_event_id')
+                if isinstance(remembered,str) and len(remembered)==32:
+                    with connect() as db:
+                        if db.execute("SELECT 1 FROM events WHERE id=?",
+                                      (remembered,)).fetchone():
+                            editing_id[0]=remembered
+        except (OSError,ValueError,TypeError):
+            pass
+    for var in fields.values():
+        var.trace_add('write',draft_changed)
+
     # These controls deliberately appear BEFORE the expandable table.
     toolbar = ttk.Frame(container)
     toolbar.pack(fill="x", pady=(12, 6))
-    create_btn = ttk.Button(toolbar, text="1 · Crear y guardar función", style="Action.TButton")
+    create_btn = ttk.Button(toolbar, text="GUARDAR NUEVA FUNCIÓN", style="Action.TButton")
     create_btn.pack(side="left", padx=(0, 7))
+    edit_btn = ttk.Button(toolbar, text="EDITAR SELECCIONADA", style="Other.TButton")
+    edit_btn.pack(side="left", padx=(0, 7))
+    new_btn = ttk.Button(toolbar, text="NUEVA FUNCIÓN", style="Other.TButton")
+    new_btn.pack(side="left", padx=(0, 7))
+    draft_status=tk.StringVar(value="Formulario recuperable automáticamente en este equipo.")
     preview_btn = ttk.Button(toolbar, text="2 · Vista previa", style="Other.TButton")
     save_btn = ttk.Button(toolbar, text="3 · Guardar PDF", style="Other.TButton")
     print_btn = ttk.Button(toolbar, text="4 · Imprimir...", style="Other.TButton")
 
     helptext = tk.StringVar(value="Primero guarda una función. Después selecciónala en la tabla para ver, guardar o imprimir sus entradas.")
     ttk.Label(container, textvariable=helptext, foreground="#214f73", wraplength=940).pack(anchor="w", pady=(0, 5))
+    ttk.Label(container,textvariable=draft_status,foreground="#356650",
+              wraplength=930).pack(anchor="w",pady=(0,5))
 
     zywell_btn = ttk.Button(container, text="2 · DISEÑAR / PREVISUALIZAR / IMPRIMIR TICKETS ZYWELL", style="Action.TButton")
     zywell_btn.pack(fill="x", pady=(0, 8))
