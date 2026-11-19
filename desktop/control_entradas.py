@@ -1184,6 +1184,22 @@ def launch_gui():
                     note.set(f'PDF individual guardado: {target}')
             except Exception as ex:
                 messagebox.showerror('Guardar PDF',str(ex),parent=win)
+        def paper_a4_proof():
+            # A4 printer at school/work: open a real PDF and let Windows show
+            # its own printer chooser. Never send ESC/POS bytes to laser printers.
+            numbers=valid_range()
+            if not numbers:return
+            try:
+                spec=current_design(save=True)
+                ev,item=get_ticket(event_id,numbers[0])
+                dest=DATA_DIR/'Prueba_Entrada_A4.pdf'
+                ticket_printer.export_catalog_pdf(ev,item,dest,spec,
+                    templates=[spec['plantilla']],
+                    width_mm=int(roll.get()),length_mm=ticket_length())
+                open_file(dest)
+                note.set('Prueba A4 abierta. Usa Ctrl + P para seleccionar la impresora de Windows.')
+            except Exception as ex:
+                messagebox.showerror('Prueba A4',str(ex),parent=win)
         def calibration_test():
             if not printer.get():
                 messagebox.showwarning('Impresora','Selecciona primero la ZYWELL.',parent=win); return
@@ -1273,6 +1289,8 @@ def launch_gui():
         ttk.Button(actions,text='VER DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
         ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
+        ttk.Button(actions,text='PRUEBA A4 (IMPRESORA DE OFICINA)',
+                   command=paper_a4_proof).pack(side='left',padx=4)
         ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
         ttk.Button(actions,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=3)
         def one_test_ticket():
