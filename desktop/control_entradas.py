@@ -1132,6 +1132,10 @@ def launch_gui():
                     if not selected:return
                     try:
                         count=install_reference_docx(Path(selected))
+                        crest=DATA_DIR/'catalogo_nuevo'/'escudo_benalmadena.png'
+                        if crest.is_file():
+                            variables['logo_ayto'].set(str(crest))
+                            variables['estilo_escudo'].set('Solo escudo')
                     except Exception as ex:
                         messagebox.showerror('Importar imágenes',str(ex),parent=gallery_win)
                         return
