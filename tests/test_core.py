@@ -172,8 +172,9 @@ class ControlEntradasTests(unittest.TestCase):
             self.assertNotEqual(updated.crop((360,190,700,380)).tobytes(),
                                 color.crop((360,190,700,380)).tobytes(),
                                 "Changing title/date/venue must update ticket")
-            self.assertEqual(updated.getpixel((round(updated.width*.96),
-                                               round(updated.height*.70))),(255,255,255))
+            self.assertNotEqual(updated.crop((round(updated.width*.81),
+                     round(updated.height*.40),round(updated.width*.94),
+                     round(updated.height*.62))).convert('L').getextrema()[0],255)
 
 
     def test_numbered_and_other_show(self):
