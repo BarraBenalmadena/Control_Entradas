@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.19"
+VERSION = "2.20"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.19 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.20 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -796,6 +796,7 @@ def launch_gui():
         import ticket_printer
         from catalog_models import CATALOG_NAMES
         from modern_catalog import MODELS as MODERN_MODELS, install_reference_docx
+        from four_models import MODELS as FOUR_MODELS
         from PIL import Image, ImageTk
 
         event = next((item for item in list_events() if item['id'] == event_id), None)
@@ -803,13 +804,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · v2.19')
+        win.title('Diseñador de entradas · v2.20')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='CATÁLOGO PRINCIPAL · 30 MODELOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='4 MODELOS PRINCIPALES · A / B / C / D',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -836,8 +837,15 @@ def launch_gui():
         cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
-        if chosen not in MODERN_MODELS and chosen not in CATALOG_NAMES and chosen not in ticket_printer.TEMPLATES:
-            chosen=MODERN_MODELS[0]
+        if chosen not in FOUR_MODELS:
+            # Resguardar selección anterior SIN borrar sus imágenes ni datos.
+            if chosen in MODERN_MODELS+CATALOG_NAMES+ticket_printer.TEMPLATES:
+                archive=DATA_DIR/'Respaldos_disenos'
+                archive.mkdir(parents=True,exist_ok=True)
+                file=archive/(event_id+'.json')
+                if not file.exists():
+                    file.write_text(json.dumps(config,ensure_ascii=False,indent=2),encoding='utf-8')
+            chosen=FOUR_MODELS[0]
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
@@ -934,7 +942,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Modelo principal (30 disponibles)',
+            'plantilla':'Modelo principal (4 disponibles)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'estilo_escudo':'Escudo municipal en catálogo nuevo',
@@ -962,7 +970,7 @@ def launch_gui():
         margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
         percent_choices=('70','80','90','100','110','120','130','140')
         combos={
-            'plantilla':MODERN_MODELS + ((chosen,) if chosen not in MODERN_MODELS and chosen in CATALOG_NAMES+ticket_printer.TEMPLATES else ()),
+            'plantilla':FOUR_MODELS,
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
             'foto_centro_x_pct':tuple(str(i) for i in range(0,101,10)),
@@ -1138,7 +1146,7 @@ def launch_gui():
                 option_controls.pack(fill='x',pady=(0,4))
                 photo_controls=ttk.Frame(gallery_controls)
                 photo_controls.pack(fill='x',pady=(0,4))
-                ttk.Label(group_controls,text='30 modelos activos · Los anteriores se conservan archivados').pack(side='left',padx=5)
+                ttk.Label(group_controls,text='4 modelos A–D · Los anteriores se conservan archivados').pack(side='left',padx=5)
                 def import_from_word():
                     selected=filedialog.askopenfilename(
                         parent=gallery_win,
@@ -1175,9 +1183,9 @@ def launch_gui():
                 ttk.Button(photo_controls,text='USAR FOTO DE EJEMPLO',
                     command=restore_default_photo).pack(side='left',padx=4)
                 ttk.Label(photo_controls,
-                    text='Tu JPG adjuntado tiene prioridad; sin JPG se usa la foto del modelo.'
+                    text='JPG adjuntado → sustituye la foto izquierda; sin JPG → foto de ejemplo.'
                     ).pack(side='left',padx=8)
-                templates=MODERN_MODELS
+                templates=FOUR_MODELS
                 def create_printable_catalog(print_now=False):
                     try:
                         spec=current_design(save=False)
@@ -1194,9 +1202,9 @@ def launch_gui():
                             open_file(Path(target))
                     except Exception as ex:
                         messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
-                ttk.Button(group_controls,text='GUARDAR PDF A4 · 2 COLUMNAS',
+                ttk.Button(group_controls,text='GUARDAR 4 MODELOS A4',
                            command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='IMPRIMIR A4 · 30 MODELOS',
+                ttk.Button(group_controls,text='IMPRIMIR A4 · 4 MODELOS',
                            command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
