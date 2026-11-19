@@ -68,7 +68,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     Y=lambda n:round(n*sy)
     im=Image.new('RGB',(W,H),'white')
     dr=ImageDraw.Draw(im)
-    dark=idx in (4,18)
+    dark=(idx-1)%8 in (3,6)
     # True original-inspired identity: 30 distinct illustration panels and
     # decorative palettes, WITHOUT the sample JPG's fake serial/QR/text.
     dr.rectangle((X(6),Y(6),W-X(7),H-Y(7)),outline=color,width=max(1,Y(4)))
@@ -113,11 +113,11 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
             artwork=Image.new('RGB',(art_w,art_h),'white')
             artwork.paste(small,(round((art_w-desired_w)*fx),
                                  round((art_h-desired_h)*fy)))
-    # Six genuinely different geometric photo masks, not a pasted rectangle.
+    # Eight original composition masks, matching diagonal, triangular, curved and theatre reference styles.
     # The image panel is separately masked; the design decoration remains.
     mask=Image.new('L',(art_w,art_h),0)
     md=ImageDraw.Draw(mask)
-    variant=(idx-1)%6
+    variant=(idx-1)%8
     if variant==0:  # diagonal
         md.polygon([(0,0),(art_w,0),(round(.82*art_w),art_h),
                     (0,art_h)],fill=255)
@@ -136,28 +136,58 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     elif variant==4:  # rounded angled frame
         md.rounded_rectangle((0,0,art_w-2,art_h-2),
                              radius=Y(68),fill=255)
-    else:  # double-angle
+    elif variant==5:  # double-angle
         md.polygon([(0,0),(round(.83*art_w),0),(art_w,round(.46*art_h)),
                     (round(.77*art_w),art_h),(0,art_h)],fill=255)
+    elif variant==6:  # large triangular corner
+        md.polygon([(0,0),(art_w,0),(round(.61*art_w),round(.44*art_h)),
+                    (round(.82*art_w),art_h),(0,art_h)],fill=255)
+    else:  # wide theatrical curved cutout
+        md.polygon([(0,0),(art_w,0),(round(.84*art_w),round(.20*art_h)),
+                    (round(.96*art_w),round(.51*art_h)),
+                    (round(.68*art_w),round(.79*art_h)),
+                    (art_w,art_h),(0,art_h)],fill=255)
     im.paste(artwork,(X(13),Y(13)),mask)
     dr=ImageDraw.Draw(im)
     borders=[((247,15),(224,558)),((258,16),(234,554)),
              ((252,18),(234,207),(261,341),(216,555)),
              ((265,17),(193,105),(254,286),(192,458),(251,555)),
              ((224,15),(257,95),(254,455),(224,557)),
-             ((223,17),(267,276),(213,557))]
+             ((223,17),(267,276),(213,557)),
+             ((268,16),(176,265),(239,556)),
+             ((225,16),(264,99),(226,280),(249,430),(208,556))]
     dr.line([(X(a),Y(b)) for a,b in borders[variant]],
             fill=color,width=max(2,Y(4)),joint='curve')
-    # Main content remains fully parametric and optically clean.
-    dr.rounded_rectangle((X(286),Y(124),X(790),Y(243)),
-                         radius=Y(11),fill=('#173c51' if dark else '#ffffff'),
-                         outline=color,width=max(1,Y(2)))
-    if idx in (3,6,16,20,30):
-        dr.line([(X(298),Y(133)),(X(774),Y(133))],
-                fill=color,width=max(1,Y(3)))
-    font_factor=tp._setting_number(design,'tamano_letra_pct',100,70,140)/100.
-    header_factor=tp._setting_number(design,'tamano_cabecera_pct',100,70,140)/100.
-    date_factor=tp._setting_number(design,'tamano_fecha_pct',100,70,140)/100.
+    # Ocho familias visuales del ejemplo Word, no treinta cambios de color
+    # sobre un mismo rectángulo. El texto permanece editable.
+    title_fill=color if dark else '#ffffff'
+    dr.rounded_rectangle((X(286),Y(124),X(796),Y(243)),
+        radius=Y(11),fill=title_fill,outline=color,width=max(1,Y(2)))
+    if variant==0:  # violin: dos líneas finas y esquina diagonal
+        dr.line((X(300),Y(130),X(780),Y(130)),fill=color,width=max(1,Y(3)))
+    elif variant==1:  # navidad dorada: marco doble
+        dr.rounded_rectangle((X(293),Y(130),X(789),Y(237)),
+            radius=Y(8),outline=color,width=max(1,Y(2)))
+    elif variant==2:  # curva azul bajo el titular
+        dr.arc((X(299),Y(197),X(788),Y(260)),0,180,
+            fill=color,width=max(1,Y(3)))
+    elif variant==3:  # panel teatral intenso
+        dr.line((X(308),Y(134),X(776),Y(134)),fill='#ffe5ae',width=max(1,Y(3)))
+        dr.line((X(308),Y(234),X(776),Y(234)),fill='#ffe5ae',width=max(1,Y(3)))
+    elif variant==4:  # pentagrama sutil
+        for yy in (131,137,143):
+            dr.line((X(306),Y(yy),X(778),Y(yy)),fill='#d7dce3',width=1)
+    elif variant==5:  # marco dorado doble
+        dr.line((X(303),Y(133),X(777),Y(133)),fill=color,width=max(1,Y(4)))
+        dr.line((X(303),Y(234),X(777),Y(234)),fill=color,width=max(1,Y(4)))
+    elif variant==6:  # gran cartela de gala
+        dr.rounded_rectangle((X(295),Y(133),X(787),Y(234)),
+            radius=Y(9),outline='#eed9a2',width=max(2,Y(3)))
+    else:  # esquina gráfica
+        dr.polygon([(X(287),Y(124)),(X(337),Y(124)),(X(287),Y(174))],
+            fill=color)
+        dr.polygon([(X(796),Y(193)),(X(796),Y(243)),(X(746),Y(243))],
+            fill=color)
     def center(t,rect,size=29,fg='#14273d',lines=2,bold=True,mini=12,factor=None):
         actual_factor=font_factor if factor is None else factor
         tp._center(ImageDraw.Draw(im),str(t),
