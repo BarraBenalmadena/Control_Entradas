@@ -112,6 +112,42 @@ class ControlEntradasTests(unittest.TestCase):
                 region=ticket_image.crop((left,top,right,bottom)).convert("L")
                 self.assertLess(region.getextrema()[0],55)
 
+    def test_geometric_models_logo_aspect_and_poster_pan(self):
+        from modern_catalog import MODELS
+        from unittest.mock import patch
+        from PIL import Image, ImageDraw
+        from pathlib import Path
+        import tempfile
+        eid=app.create_event("Festival pruebas","2027-12-11T17:00","libre",1)
+        event,ticket=app.get_ticket(eid,1)
+        with tempfile.TemporaryDirectory() as tmp:
+            art=Image.new("RGB",(260,500),"white")
+            d=ImageDraw.Draw(art)
+            d.rectangle((0,0,130,500),fill=(250,30,30))
+            d.rectangle((130,0,260,500),fill=(25,65,220))
+            poster=Path(tmp)/"portrait.png"
+            art.save(poster)
+            wide=Image.new("RGBA",(1800,440),(0,0,0,0))
+            wd=ImageDraw.Draw(wide)
+            wd.rounded_rectangle((80,80,1700,350),radius=35,fill=(0,108,215,255))
+            logo=Path(tmp)/"education.png";wide.save(logo)
+            p={"plantilla":MODELS[0],"poster":str(poster),
+               "logo_ayto":str(logo),"foto_zoom_pct":"150",
+               "foto_centro_x_pct":"0","foto_centro_y_pct":"50"}
+            with patch("modern_catalog.art_path",return_value=poster):
+                left=ticket_printer.render_landscape_ticket(event,ticket,80,p,
+                                                            color_preview=True)
+                p["foto_centro_x_pct"]="100"
+                right=ticket_printer.render_landscape_ticket(event,ticket,80,p,
+                                                             color_preview=True)
+            self.assertNotEqual(left.crop((30,60,220,480)).tobytes(),
+                                right.crop((30,60,220,480)).tobytes())
+            # The photo may move, but the authenticated QR is identical.
+            self.assertEqual(left.crop((830,175,1050,396)).tobytes(),
+                             right.crop((830,175,1050,396)).tobytes())
+            self.assertGreater(sum(1 for x in range(290,795,20)
+                                     if left.getpixel((x,65))[2]>120),4)
+
     def test_thirty_native_styles_and_unique_secure_qr_barcode(self):
         from modern_catalog import MODELS
         from unittest.mock import patch
