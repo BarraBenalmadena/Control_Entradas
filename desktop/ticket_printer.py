@@ -17,6 +17,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.graphics.barcode.code128 import Code128
 from reportlab.lib.units import mm
+from reportlab.lib.pagesizes import A4
+from catalog_models import CATALOG_NAMES, CATALOG_INDEX, catalog_asset
 
 PRINTABLE_DOTS = {58: 384, 80: 576}
 LANDSCAPE_SIZE = {58: (720, 384), 80: (1080, 576)}
@@ -303,6 +305,15 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     xu = lambda n: round(n*xunit)
     y = lambda n: T+round(n*scale)
     chosen=str(design.get('plantilla') or '')
+    if chosen in CATALOG_INDEX:
+        # Use reference photography/motif from the exact selected catalog tile,
+        # but recompute ALL event text, QR and Code128 from the live ticket.
+        _, asset_key, base_index = CATALOG_INDEX[chosen]
+        image=catalog_asset(chosen)
+        base_design=dict(design)
+        base_design['plantilla']=TEMPLATES[base_index]
+        base_design['poster']=str(image)
+        return render_landscape_ticket(event,ticket,width_mm,base_design,length_mm=length_mm)
     if chosen not in TEMPLATES:
         chosen = TEMPLATES[3] if design.get('poster_mode') == 'fondo' else TEMPLATES[0]
     kind=TEMPLATES.index(chosen)
@@ -765,6 +776,60 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     text_box('1 PERSONA',(stub_left,y(492),stub_right,y(531)),26,lines=1,min_size=13)
     text_box('PROHIBIDA SU VENTA',(stub_left,y(540),stub_right,y(563)),14,lines=1,min_size=9)
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
+
+
+
+def export_catalog_pdf(event: dict, ticket: dict, target: Path,
+                       design: dict | None=None, templates=None,
+                       *, width_mm: int=80, length_mm: int=135) -> Path:
+    """A4, two actual ticket examples per row, model title and page numbering.
+
+    Uses exactly the same ticket renderer as Windows printing, hence the same
+    per-event QR/Code128 and no fake reference codes.
+    """
+    design=design or {}
+    templates=tuple(templates if templates is not None else CATALOG_NAMES)
+    if not templates:
+        raise ValueError('Selecciona al menos un diseño del catálogo.')
+    dest=Path(target)
+    dest.parent.mkdir(parents=True,exist_ok=True)
+    pdf=Canvas(str(dest),pagesize=A4)
+    page_w,page_h=A4
+    columns=2
+    card_w=(page_w-64)/columns
+    thumb_w=card_w-14
+    thumb_h=thumb_w * 80/135
+    card_h=thumb_h+32
+    rows_per_page=max(1,int((page_h-80)//card_h))
+    per_page=columns*rows_per_page
+    pages=(len(templates)+per_page-1)//per_page
+    for i,template in enumerate(templates):
+        if i and i%per_page==0:
+            pdf.showPage()
+        pos=i%per_page
+        row=pos//columns
+        col=pos%columns
+        x=29+col*card_w
+        y=page_h-65-(row+1)*card_h
+        if row==0:
+            pdf.setFont('Helvetica-Bold',13)
+            pdf.drawString(30,page_h-29,'CATALOGO DE ENTRADAS - MUESTRAS DE IMPRESION')
+            pdf.setFont('Helvetica',9)
+            pdf.drawRightString(page_w-30,page_h-29,
+                                f'Pagina {i//per_page+1} de {pages}')
+        spec=dict(design)
+        spec['plantilla']=template
+        im=render_landscape_ticket(event,ticket,width_mm,spec,length_mm=length_mm)
+        pdf.setFont('Helvetica-Bold',9)
+        safe=template.encode('latin-1','replace').decode('latin-1')
+        pdf.drawString(x+2,y+thumb_h+9,safe[:56])
+        pdf.drawImage(ImageReader(im),x+2,y,
+                      width=thumb_w,height=thumb_h,
+                      preserveAspectRatio=True,anchor='c')
+        pdf.setStrokeColorRGB(.78,.78,.78)
+        pdf.rect(x,y-2,thumb_w+4,thumb_h+4,stroke=1,fill=0)
+    pdf.save()
+    return dest
 
 def render_ticket(event: dict, ticket: dict, width_mm: int=80, design: dict | None=None, *, length_mm: int|None=None) -> Image.Image:
     """Para RAW ESC/POS: ancho de 576/384 puntos, girado 90 grados."""
