@@ -49,6 +49,6 @@ if True:
         color.save(destination/f'Modelo_{n+1}_color.png')
         mono.save(destination/f'Modelo_{n+1}_BN.png')
     ticket_printer.export_catalog_pdf(
-        event,ticket,destination/'Cuatro_modelos_A4.pdf',design,
+        event,ticket,destination/'Ocho_modelos_A4.pdf',design,
         templates=MODELS,width_mm=80,length_mm=135)
-    print("Cuatro modelos A-D generados desde el mismo renderizador del EXE.")
+    print("Ocho modelos A-H generados desde el mismo renderizador del EXE.")
