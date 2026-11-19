@@ -259,47 +259,56 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     draw_rule([(edge(yy),yy) for yy in range(13,563,3)],
               ("#ab1438","#daa018","#d9a11c","#268ec2")[variant],4)
 
-    # Encabezado: el archivo elegido por el usuario es siempre la única fuente
-    # de escudo o logotipo. No hay escudo generado ni logos por defecto.
+    # Encabezado con escudo REAL grande. Las cajas de texto parten del
+    # espacio realmente reservado al logo; no hay superposición de capas.
     council = _logo(tp,design,"logo_ayto")
     school = _logo(tp,design,"logo_centro")
     short_council = council is not None and \
         council.width <= council.height*1.65
     header_start = (277,265,328,276)[variant]
+    logo_pct=tp._setting_number(design,"tamano_logo_pct",135,100,160)
     if short_council:
-        paint_logo(council,(header_start,18,header_start+70,129))
-        name_left=header_start+76
-        name_right=616 if school is not None else 820
+        crest_width=round(98*logo_pct/135)
+        crest_width=min(118,crest_width)
+        crest_end=header_start+crest_width
+        paint_logo(council,(header_start,8,crest_end,137))
+        name_left=crest_end+10
         if school is not None:
-            paint_logo(school,(624,25,820,107))
+            paint_logo(school,(722,22,820,121))
+            name_right=712
+        else:
+            name_right=820
     elif council is not None:
-        # JPG municipal panorámico completo: zona superior derecha independiente.
-        paint_logo(council,(569,22,820,121))
+        # La variante horizontal usa toda su imagen, sin recorte del escudo.
+        wide_width=min(264,round(225*logo_pct/135))
+        paint_logo(council,(820-wide_width,8,820,135))
         if school is not None:
-            paint_logo(school,(header_start,31,header_start+70,105))
-            name_left=header_start+77
+            paint_logo(school,(header_start,18,header_start+72,124))
+            name_left=header_start+78
         else:
             name_left=header_start+5
-        name_right=561
+        name_right=813-wide_width
     elif school is not None:
-        paint_logo(school,(header_start,22,header_start+85,119))
-        name_left=header_start+93
+        paint_logo(school,(header_start,9,header_start+110,135))
+        name_left=header_start+119
         name_right=820
     else:
         name_left=header_start+5
-        name_right=829
+        name_right=820
+    if name_right-name_left < 165:
+        raise ValueError("Los dos logotipos no caben en la cabecera. "
+                         "Usa uno solo o reduce el tamaño del logotipo.")
     fit_text(design.get("cabecera") or "Escuela Municipal de Música y Danza",
-             (name_left,17,name_right,82),36,NAVY,
-             lines=2,small=15,factor=title_size)
+             (name_left,14,name_right,80),34,NAVY,
+             lines=2,small=13,factor=title_size)
     fit_text(design.get("subtitulo") or "Arroyo de la Miel",
-             (name_left,84,name_right,128),23,
+             (name_left,82,name_right,125),23,
              ("#972038","#0a3a70","#8d1328","#13395f")[variant],
-             small=13,factor=title_size)
-    # Los motivos bajo el encabezado nunca cruzan logos ni letras.
+             small=12,factor=title_size)
     if variant==1:
-        curve([(name_left,132),(548,142),(822,125)],GOLD,3)
+        curve([(name_left,135),(550,143),(819,131)],GOLD,2)
     if variant==2:
-        draw_rule([(name_left+10,134),(824,134)],GOLD,2)
+        draw_rule([(name_left+10,135),(818,135)],GOLD,2)
 
     # Título del evento con cuatro geometrías realmente distintas.
     body_start=(266,259,294,265)[variant]
