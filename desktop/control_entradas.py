@@ -754,6 +754,7 @@ def launch_gui():
             return
         import shutil
         import ticket_printer
+        from catalog_models import CATALOG_NAMES
         from PIL import Image, ImageTk
 
         event = next((item for item in list_events() if item['id'] == event_id), None)
@@ -767,7 +768,7 @@ def launch_gui():
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='TICKETS HORIZONTALES · 36 DISEÑOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='CATÁLOGO PRINCIPAL · 25 DISEÑOS / VERSIONES BÁSICAS · 36',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -794,8 +795,8 @@ def launch_gui():
         cut_mode=tk.StringVar(value=legacy_mode)
         length=tk.StringVar(value=str(prefs.get('largo_ticket','135' if str(prefs.get('ancho','80'))=='80' else '90')))
         chosen=config.get('plantilla')
-        if chosen not in ticket_printer.TEMPLATES:
-            chosen=ticket_printer.TEMPLATES[3 if config.get('poster_mode')=='fondo' else 0]
+        if chosen not in CATALOG_NAMES and chosen not in ticket_printer.TEMPLATES:
+            chosen=CATALOG_NAMES[0]
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
@@ -879,7 +880,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (36 modelos)',
+            'plantilla':'Diseño (25 seleccionados + 36 versiones básicas)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
@@ -903,7 +904,7 @@ def launch_gui():
         margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
         percent_choices=('70','80','90','100','110','120','130','140')
         combos={
-            'plantilla':ticket_printer.TEMPLATES,
+            'plantilla':CATALOG_NAMES+ticket_printer.TEMPLATES,
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
             'modo_impresion':('Normal','Blanco económico'),
@@ -1028,7 +1029,7 @@ def launch_gui():
                 ttk.Button(fr,text='Cerrar',command=popup.destroy).pack(pady=8)
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
-        def gallery():
+        def gallery(collection='catalogo'):
             try:
                 numbers=valid_range()
                 if not numbers:return
@@ -1050,11 +1051,20 @@ def launch_gui():
                 viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
                 gallery_controls=ttk.Frame(shell)
                 gallery_controls.pack(fill='x',before=viewport)
-                ttk.Label(gallery_controls,text='VERSIÓN DE LOS DISEÑOS:').pack(side='left',padx=5)
+                def gallery_switch(other):
+                    gallery_win.destroy()
+                    gallery(other)
+                ttk.Button(gallery_controls,text='CATÁLOGO PRINCIPAL (25)',
+                           command=lambda:gallery_switch('catalogo')).pack(side='left',padx=4)
+                ttk.Button(gallery_controls,text='VERSIONES BÁSICAS (36)',
+                           command=lambda:gallery_switch('basicas')).pack(side='left',padx=4)
+                ttk.Label(gallery_controls,
+                          text='Catálogo actual' if collection=='catalogo' else 'Modelos anteriores'
+                          ).pack(side='left',padx=5)
                 def gallery_style(style):
                     variables['modo_impresion'].set(style)
                     gallery_win.destroy()
-                    gallery()
+                    gallery(collection)
                 ttk.Button(gallery_controls,text='NORMAL (NEGRO)',
                            command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
                 ttk.Button(gallery_controls,text='BLANCO ECONÓMICO',
@@ -1062,15 +1072,37 @@ def launch_gui():
                 def gallery_notices(style):
                     variables['estilo_avisos'].set(style)
                     gallery_win.destroy()
-                    gallery()
+                    gallery(collection)
                 ttk.Button(gallery_controls,text='AVISOS B · RECUADRO',
                            command=lambda:gallery_notices('B · Recuadro')).pack(side='left',padx=5)
                 ttk.Button(gallery_controls,text='AVISOS D · SEPARADORES',
                            command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
                 ttk.Label(gallery_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
-                # Mismo bitmap que se envía a la impresora: miniatura centrada,
-                # sin crops y sin cambiar la relación de aspecto.
-                for i,template in enumerate(ticket_printer.TEMPLATES):
+                templates=CATALOG_NAMES if collection=='catalogo' else ticket_printer.TEMPLATES
+                def create_printable_catalog(print_now=False):
+                    try:
+                        spec=current_design(save=False)
+                        target=(DATA_DIR/'Catalogo_Entradas_A4.pdf') if print_now else filedialog.asksaveasfilename(
+                            parent=gallery_win,title='Guardar catálogo para compañeros',
+                            initialfile='Catalogo_Entradas_A4.pdf',defaultextension='.pdf',
+                            filetypes=[('PDF A4','*.pdf')])
+                        if not target:return
+                        ticket_printer.export_catalog_pdf(ev,tkdata,Path(target),spec,
+                                  templates,width_mm=int(roll.get()),length_mm=ticket_length())
+                        open_file(Path(target))
+                        if print_now:
+                            messagebox.showinfo('Imprimir catálogo',
+                                'PDF abierto. Pulsa Ctrl + P para imprimir en papel A4 '
+                                '(dos columnas, con el nombre de cada diseño).',
+                                parent=gallery_win)
+                    except Exception as ex:
+                        messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
+                ttk.Button(gallery_controls,text='EXPORTAR PDF A4 · 2 COLUMNAS',
+                           command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
+                ttk.Button(gallery_controls,text='IMPRIMIR CATÁLOGO',
+                           command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
+                # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
+                for i,template in enumerate(templates):
                     copy=dict(d);copy['plantilla']=template
                     pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,length_mm=ticket_length())
                     art_w,art_h=470,248
