@@ -169,7 +169,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     school=_logo(tp,design,"logo_centro")
     short=crest is not None and crest.width <= crest.height*1.65
     L,R=body
-    factor=tp._setting_number(design,"tamano_logo_pct",135,100,160)
+    factor=tp._setting_number(design,"tamano_logo_pct",150,100,160)
     if short:
         crest_width=min(122,round(104*factor/135))
         draw_logo(crest,(L+4,8,L+4+crest_width,136))
