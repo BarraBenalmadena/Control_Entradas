@@ -140,11 +140,11 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     if is_short:
         real_logo(municipal,(begin,16,begin+78,132))
         left=begin+82
-        right=828 if educational is None else 665
+        right=816 if educational is None else 665
         if educational is not None:
-            real_logo(educational,(669,23,829,109))
+            real_logo(educational,(669,23,816,109))
     elif municipal is not None:
-        real_logo(municipal,(640,21,827,118))
+        real_logo(municipal,(640,21,815,118))
         left=begin+8
         right=635
         if educational is not None:
@@ -152,18 +152,18 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
             left=begin+76
     elif educational is not None:
         real_logo(educational,(begin,21,begin+79,120))
-        left=begin+84;right=828
+        left=begin+84;right=816
     else:
-        left=begin+6;right=828
+        left=begin+6;right=816
     txt(design.get("cabecera") or "Escuela Municipal de Música y Danza",
         (left,18,right,81),31,NAVY,2,14,head_pct)
     txt(design.get("subtitulo") or "Arroyo de la Miel",
         (left,84,right,119),21,NAVY,1,12,head_pct)
-    line([(begin+20,134),(831,134)],GOLD,2)
+    line([(begin+20,134),(816,134)],GOLD,2)
 
     name=str(event.get("name") or "ESPECTÁCULO")
     L=(315 if variant==2 else 281)
-    R=830
+    R=817
     if variant==0:
         # Título navideño bicolor; textos libres siguen siendo editables.
         words=name.upper()
@@ -247,12 +247,12 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
 
     # QR propio del evento y de la entrada. Pintar el panel opaco AL FINAL
     # elimina cualquier invasión procedente de fotos o adornos contiguos.
-    stub_left,stub_right=846,1073
+    stub_left,stub_right=825,1075
     d=ImageDraw.Draw(img)
     dark=variant==3
     d.rectangle(b((stub_left,11,stub_right,563)),
                  fill="#112c50" if dark else "white")
-    line([(842,11),(842,562)],GOLD if dark else NAVY,3)
+    line([(820,11),(820,562)],GOLD if dark else NAVY,3)
     d.rounded_rectangle(b((stub_left+7,26,stub_right-7,83)),
         radius=max(1,Y(9)),fill=NAVY)
     txt("CONTROL DE ACCESO",(stub_left+10,30,stub_right-10,77),
@@ -262,18 +262,15 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         outline=GOLD if dark else color,width=max(1,Y(2)))
     txt(f"N.º {int(ticket['number']):04d}",
         (stub_left+20,109,stub_right-20,152),31,NAVY,1,15)
-    # White quiet zone around QR (code fits fully inside 174..400).
-    qrbox=b((stub_left+8,173,stub_right-8,405))
-    d.rectangle(qrbox,fill="white")
-    qr=tp._qr_image(str(ticket["qr"]),
-                   qrbox[2]-qrbox[0],qrbox[3]-qrbox[1])
-    img.paste(qr,(qrbox[0]+(qrbox[2]-qrbox[0]-qr.width)//2,
-                  qrbox[1]+(qrbox[3]-qrbox[1]-qr.height)//2))
-    txt("ESCANEAR QR",(stub_left+12,411,stub_right-12,449),
-        21,"white" if dark else NAVY,1,11)
-    line([(stub_left+18,458),(stub_right-18,458)],GOLD if dark else color,2)
+    # Matriz cuadrada de máximo tamaño, idéntica en los doce modelos,
+    # sobre blanco incluso cuando el talón del diseño es azul oscuro.
+    qrbox=b((stub_left+6,164,stub_right-6,448))
+    tp.draw_standard_access_qr(img,str(ticket["qr"]),qrbox)
+    txt("ESCANEAR QR",(stub_left+12,452,stub_right-12,478),
+        21,"white" if dark else NAVY,1,10)
+    line([(stub_left+18,482),(stub_right-18,482)],GOLD if dark else color,2)
     label=str(ticket.get("seat_label") or "").strip() or "1 PERSONA"
-    txt(label,(stub_left+10,473,stub_right-9,538),
+    txt(label,(stub_left+10,488,stub_right-9,548),
         31,"white" if dark else NAVY,2,13)
     d.rounded_rectangle(b((5,5,1075,571)),radius=max(1,Y(9)),
         outline=GOLD if variant!=1 else NAVY,width=max(2,Y(4)))
