@@ -801,6 +801,9 @@ def launch_gui():
         variables={
             'plantilla':tk.StringVar(value=chosen),
             'ajuste_imagen':tk.StringVar(value=config.get('ajuste_imagen','Rellenar y recortar')),
+            'foto_centro_x_pct':tk.StringVar(value=str(config.get('foto_centro_x_pct','50'))),
+            'foto_centro_y_pct':tk.StringVar(value=str(config.get('foto_centro_y_pct','50'))),
+            'foto_zoom_pct':tk.StringVar(value=str(config.get('foto_zoom_pct','100'))),
             'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')),
             'estilo_avisos':tk.StringVar(value=config.get('estilo_avisos','Según modelo')), 
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Grandes')),
@@ -850,7 +853,16 @@ def launch_gui():
         printer_group=ttk.LabelFrame(page_print,text='Impresora ZYWELL y calibración',padding=12)
         printer_group.pack(fill='x',pady=(0,9))
         ttk.Label(printer_group,text='Impresora de Windows').grid(row=0,column=0,sticky='w',pady=6)
-        ttk.Combobox(printer_group,textvariable=printer,values=printers,width=52,state='readonly').grid(row=0,column=1,columnspan=3,sticky='ew',padx=7)
+        printer_combo=ttk.Combobox(printer_group,textvariable=printer,values=printers,width=44,state='readonly')
+        printer_combo.grid(row=0,column=1,columnspan=2,sticky='ew',padx=7)
+        def refresh_printers():
+            found=ticket_printer.list_windows_printers()
+            printer_combo.configure(values=found)
+            if printer.get() not in found:
+                printer.set(next((v for v in found if 'zywell' in v.lower() or 'pos-' in v.lower()),found[0] if found else ''))
+            if not found:
+                messagebox.showwarning('Impresoras','Windows no ha detectado impresoras instaladas o conectadas.',parent=win)
+        ttk.Button(printer_group,text='Detectar de nuevo',command=refresh_printers).grid(row=0,column=3,sticky='ew',padx=5)
         ttk.Label(printer_group,text='Rollo (mm)').grid(row=1,column=0,sticky='w',pady=7)
         ttk.Combobox(printer_group,textvariable=roll,values=('58','80'),width=9,state='readonly').grid(row=1,column=1,sticky='w',padx=7)
         ttk.Label(printer_group,text='Largo del ticket (mm)').grid(row=1,column=2,sticky='w')
@@ -885,6 +897,9 @@ def launch_gui():
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'ajuste_imagen':'Ajuste del cartel / fotografía',
+            'foto_centro_x_pct':'Centrar foto horizontal (%) · 0 izquierda, 100 derecha',
+            'foto_centro_y_pct':'Centrar foto vertical (%) · 0 arriba, 100 abajo',
+            'foto_zoom_pct':'Ampliación de la foto (%) · 60–250',
             'modo_impresion':'Impresión térmica: normal o blanca (menos tinta)',
             'estilo_avisos':'Avisos de acceso (se aplica a TODOS los diseños)',
             'margen_izquierdo_mm':'Margen izquierdo / inicio (mm)',
@@ -908,6 +923,9 @@ def launch_gui():
             'plantilla':MODERN_MODELS+CATALOG_NAMES+ticket_printer.TEMPLATES,
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
+            'foto_centro_x_pct':tuple(str(i) for i in range(0,101,10)),
+            'foto_centro_y_pct':tuple(str(i) for i in range(0,101,10)),
+            'foto_zoom_pct':('60','70','80','90','100','110','120','130','140','150','175','200','225','250'),
             'modo_impresion':('Normal','Blanco económico'),
             'estilo_avisos':('Según modelo','B · Recuadro','D · Separadores','Clásico'),
             'tamano_logos':ticket_printer.LOGO_SIZES,
@@ -978,6 +996,9 @@ def launch_gui():
                 raise ValueError('Desplazamiento permitido: -3 a +3 mm.')
             # Validar todos los ajustes antes de guardar, no al imprimir.
             ticket_printer.geometry(int(roll.get()),ticket_length(),d)
+            ticket_printer._setting_number(d,'foto_centro_x_pct',50,0,100)
+            ticket_printer._setting_number(d,'foto_centro_y_pct',50,0,100)
+            ticket_printer._setting_number(d,'foto_zoom_pct',100,60,250)
             for field in ('tamano_letra_pct','tamano_cabecera_pct','tamano_fecha_pct'):
                 ticket_printer._setting_number(d,field,100,70,140)
             if d['posicion_logos'] not in ticket_printer.LOGO_POSITIONS:
