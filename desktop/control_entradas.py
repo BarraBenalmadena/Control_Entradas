@@ -755,7 +755,7 @@ def launch_gui():
         import shutil
         import ticket_printer
         from catalog_models import CATALOG_NAMES
-        from modern_catalog import MODELS as MODERN_MODELS
+        from modern_catalog import MODELS as MODERN_MODELS, install_reference_docx
         from PIL import Image, ImageTk
 
         event = next((item for item in list_events() if item['id'] == event_id), None)
@@ -1067,7 +1067,7 @@ def launch_gui():
                 ttk.Button(fr,text='Cerrar',command=popup.destroy).pack(pady=8)
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
-        def gallery(collection='catalogo'):
+        def gallery(collection='catalogo',show_model_art=True):
             try:
                 numbers=valid_range()
                 if not numbers:return
@@ -1093,9 +1093,11 @@ def launch_gui():
                 group_controls.pack(fill='x',pady=(0,4))
                 option_controls=ttk.Frame(gallery_controls)
                 option_controls.pack(fill='x',pady=(0,4))
+                photo_controls=ttk.Frame(gallery_controls)
+                photo_controls.pack(fill='x',pady=(0,4))
                 def gallery_switch(other):
                     gallery_win.destroy()
-                    gallery(other)
+                    gallery(other,show_model_art)
                 ttk.Button(group_controls,text='DISEÑOS NUEVOS (30)',
                            command=lambda:gallery_switch('catalogo')).pack(side='left',padx=4)
                 ttk.Button(group_controls,text='CATÁLOGO ANTERIOR (25)',
@@ -1108,7 +1110,7 @@ def launch_gui():
                 def gallery_style(style):
                     variables['modo_impresion'].set(style)
                     gallery_win.destroy()
-                    gallery(collection)
+                    gallery(collection,show_model_art)
                 ttk.Button(option_controls,text='NORMAL (NEGRO)',
                            command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
                 ttk.Button(option_controls,text='BLANCO ECONÓMICO',
@@ -1116,16 +1118,47 @@ def launch_gui():
                 def gallery_notices(style):
                     variables['estilo_avisos'].set(style)
                     gallery_win.destroy()
-                    gallery(collection)
+                    gallery(collection,show_model_art)
                 ttk.Button(option_controls,text='AVISOS B · RECUADRO',
                            command=lambda:gallery_notices('B · Recuadro')).pack(side='left',padx=5)
                 ttk.Button(option_controls,text='AVISOS D · SEPARADORES',
                            command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
                 ttk.Label(option_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
+                def import_from_word():
+                    selected=filedialog.askopenfilename(
+                        parent=gallery_win,
+                        title='Documento Word de ocho diseños de entradas',
+                        filetypes=[('Documento Word','*.docx')])
+                    if not selected:return
+                    try:
+                        count=install_reference_docx(Path(selected))
+                    except Exception as ex:
+                        messagebox.showerror('Importar imágenes',str(ex),parent=gallery_win)
+                        return
+                    messagebox.showinfo('Motivos importados',
+                        f'Se han importado {count} imágenes decorativas reales del Word. '
+                        'Los números, QR, títulos y códigos de barras se generan '
+                        'con los datos de cada entrada.',parent=gallery_win)
+                    gallery_win.destroy()
+                    gallery('catalogo',True)
+                def toggle_model_art(value):
+                    gallery_win.destroy()
+                    gallery(collection,value)
+                ttk.Button(photo_controls,text='IMPORTAR 8 IMÁGENES DEL WORD',
+                    command=import_from_word).pack(side='left',padx=4)
+                ttk.Button(photo_controls,text='VER FOTOS DE LOS MODELOS',
+                    command=lambda:toggle_model_art(True)).pack(side='left',padx=4)
+                ttk.Button(photo_controls,text='VER CON MI CARTEL',
+                    command=lambda:toggle_model_art(False)).pack(side='left',padx=4)
+                ttk.Label(photo_controls,
+                    text='Fotografías originales' if show_model_art else 'Cartel personalizado'
+                    ).pack(side='left',padx=8)
                 templates=(MODERN_MODELS if collection=='catalogo' else CATALOG_NAMES if collection=='anteriores' else ticket_printer.TEMPLATES)
                 def create_printable_catalog(print_now=False):
                     try:
                         spec=current_design(save=False)
+                        if collection=='catalogo' and show_model_art:
+                            spec['poster']=''
                         target=(DATA_DIR/'Catalogo_Entradas_A4.pdf') if print_now else filedialog.asksaveasfilename(
                             parent=gallery_win,title='Guardar catálogo para compañeros',
                             initialfile='Catalogo_Entradas_A4.pdf',defaultextension='.pdf',
@@ -1148,6 +1181,8 @@ def launch_gui():
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
                     copy=dict(d);copy['plantilla']=template
+                    if collection=='catalogo' and show_model_art:
+                        copy['poster']=''
                     pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
                                               length_mm=ticket_length(),color_preview=True)
                     art_w,art_h=470,248
@@ -1168,6 +1203,8 @@ def launch_gui():
                               foreground='#42586a').pack(anchor='center',pady=(2,0))
                     def choose(t=template):
                         variables['plantilla'].set(t)
+                        if collection=='catalogo' and show_model_art:
+                            variables['poster'].set('')
                         variables['modo_impresion'].set(d.get('modo_impresion','Normal'))
                         notebook.select(page_design)
                         note.set(f'Diseño seleccionado: {t}. Puedes ajustar el cartel, tamaño de logos y guardar.')
