@@ -1,4 +1,4 @@
-name: Compilar v2.17 Windows y Android
+name: Compilar v2.18 Windows y Android
 on:
   push:
     branches: [main]
@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Guardar fuente para revisión visual de los 25 diseños
+      - name: Guardar fuente de los 30 diseños activos y respaldo de antiguos
         uses: actions/upload-artifact@v4
         with:
           name: ControlEntradas_Fuente_Verificacion
@@ -27,7 +27,7 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m unittest discover -s tests -v
       - name: Compilar aplicación con módulos de plano y exportación
-        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=seat_plan --hidden-import=fitz --collect-submodules=reportlab.graphics.barcode --name ControlEntradas_Windows desktop/control_entradas.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=win32ui --hidden-import=win32con --hidden-import=PIL.ImageWin --hidden-import=seat_plan --hidden-import=fitz --collect-submodules=reportlab.graphics.barcode --name ControlEntradas_Windows desktop/control_entradas.py
       - name: Comprobar módulos cargados dentro del EXE real
         shell: pwsh
         run: |
