@@ -1051,33 +1051,37 @@ def launch_gui():
                 viewport.bind('<Configure>',lambda e:viewport.itemconfigure(wid,width=e.width))
                 gallery_controls=ttk.Frame(shell)
                 gallery_controls.pack(fill='x',before=viewport)
+                group_controls=ttk.Frame(gallery_controls)
+                group_controls.pack(fill='x',pady=(0,4))
+                option_controls=ttk.Frame(gallery_controls)
+                option_controls.pack(fill='x',pady=(0,4))
                 def gallery_switch(other):
                     gallery_win.destroy()
                     gallery(other)
-                ttk.Button(gallery_controls,text='CATÁLOGO PRINCIPAL (25)',
+                ttk.Button(group_controls,text='CATÁLOGO PRINCIPAL (25)',
                            command=lambda:gallery_switch('catalogo')).pack(side='left',padx=4)
-                ttk.Button(gallery_controls,text='VERSIONES BÁSICAS (36)',
+                ttk.Button(group_controls,text='VERSIONES BÁSICAS (36)',
                            command=lambda:gallery_switch('basicas')).pack(side='left',padx=4)
-                ttk.Label(gallery_controls,
+                ttk.Label(option_controls,
                           text='Catálogo actual' if collection=='catalogo' else 'Modelos anteriores'
                           ).pack(side='left',padx=5)
                 def gallery_style(style):
                     variables['modo_impresion'].set(style)
                     gallery_win.destroy()
                     gallery(collection)
-                ttk.Button(gallery_controls,text='NORMAL (NEGRO)',
+                ttk.Button(option_controls,text='NORMAL (NEGRO)',
                            command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
-                ttk.Button(gallery_controls,text='BLANCO ECONÓMICO',
+                ttk.Button(option_controls,text='BLANCO ECONÓMICO',
                            command=lambda:gallery_style('Blanco económico')).pack(side='left',padx=5)
                 def gallery_notices(style):
                     variables['estilo_avisos'].set(style)
                     gallery_win.destroy()
                     gallery(collection)
-                ttk.Button(gallery_controls,text='AVISOS B · RECUADRO',
+                ttk.Button(option_controls,text='AVISOS B · RECUADRO',
                            command=lambda:gallery_notices('B · Recuadro')).pack(side='left',padx=5)
-                ttk.Button(gallery_controls,text='AVISOS D · SEPARADORES',
+                ttk.Button(option_controls,text='AVISOS D · SEPARADORES',
                            command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
-                ttk.Label(gallery_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
+                ttk.Label(option_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
                 templates=CATALOG_NAMES if collection=='catalogo' else ticket_printer.TEMPLATES
                 def create_printable_catalog(print_now=False):
                     try:
@@ -1097,9 +1101,9 @@ def launch_gui():
                                 parent=gallery_win)
                     except Exception as ex:
                         messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
-                ttk.Button(gallery_controls,text='EXPORTAR PDF A4 · 2 COLUMNAS',
+                ttk.Button(group_controls,text='EXPORTAR PDF A4 · 2 COLUMNAS',
                            command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
-                ttk.Button(gallery_controls,text='IMPRIMIR CATÁLOGO',
+                ttk.Button(group_controls,text='IMPRIMIR CATÁLOGO',
                            command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
