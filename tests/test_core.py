@@ -112,6 +112,43 @@ class ControlEntradasTests(unittest.TestCase):
                 region=ticket_image.crop((left,top,right,bottom)).convert("L")
                 self.assertLess(region.getextrema()[0],55)
 
+    def test_thirty_native_styles_and_unique_secure_qr_barcode(self):
+        from modern_catalog import MODELS
+        from unittest.mock import patch
+        from PIL import Image
+        import tempfile
+        self.assertEqual(len(MODELS),30)
+        self.assertEqual(len(set(MODELS)),30)
+        eid=app.create_event("Concierto de invierno","2027-12-10T20:15","libre",2)
+        event,first=app.get_ticket(eid,1)
+        _,second=app.get_ticket(eid,2)
+        with tempfile.TemporaryDirectory() as tmp:
+            artwork=Path(tmp)/"art_01.jpg"
+            Image.new("RGB",(140,207),(170,58,46)).save(artwork)
+            with patch("modern_catalog.art_path",return_value=artwork):
+                for model in MODELS:
+                    design={"plantilla":model}
+                    img=ticket_printer.render_landscape_ticket(
+                            event,first,80,design,color_preview=True)
+                    self.assertEqual(img.size,(1080,576))
+                    self.assertEqual(img.crop((30,70,205,360)).getpixel((0,0))[0]>0,True)
+                design={"plantilla":MODELS[0]}
+                a=ticket_printer.render_landscape_ticket(
+                    event,first,80,design,color_preview=True)
+                b=ticket_printer.render_landscape_ticket(
+                    event,second,80,design,color_preview=True)
+                self.assertNotEqual(a.crop((850,175,1050,400)).tobytes(),
+                                    b.crop((850,175,1050,400)).tobytes())
+                self.assertNotEqual(a.crop((290,493,800,560)).tobytes(),
+                                    b.crop((290,493,800,560)).tobytes())
+                mini=ticket_printer.render_landscape_ticket(
+                    event,first,58,design,color_preview=True)
+                self.assertGreater(mini.width,500)
+                p=Path(tmp)/"A4.pdf"
+                ticket_printer.export_catalog_pdf(event,first,p,design,
+                    templates=MODELS[:4],width_mm=80,length_mm=135)
+                self.assertTrue(p.read_bytes().startswith(b"%PDF-"))
+
     def test_primary_catalog_entries_and_a4_two_column_export(self):
         from catalog_models import CATALOG_NAMES, CATALOG_INDEX
         self.assertEqual(len(CATALOG_NAMES),25)
