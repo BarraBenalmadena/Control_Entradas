@@ -243,6 +243,9 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
             fill=color)
         dr.polygon([(X(796),Y(193)),(X(796),Y(243)),(X(746),Y(243))],
             fill=color)
+    font_factor=tp._setting_number(design,'tamano_letra_pct',100,70,140)/100.
+    header_factor=tp._setting_number(design,'tamano_cabecera_pct',100,70,140)/100.
+    date_factor=tp._setting_number(design,'tamano_fecha_pct',100,70,140)/100.
     def center(t,rect,size=29,fg='#14273d',lines=2,bold=True,mini=12,factor=None):
         actual_factor=font_factor if factor is None else factor
         tp._center(ImageDraw.Draw(im),str(t),
