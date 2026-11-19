@@ -1,4 +1,4 @@
-name: Compilar v2.22 Windows y Android
+name: Compilar v2.23 Windows y Android
 on:
   push:
     branches: [main]
@@ -30,7 +30,7 @@ jobs:
         run: python desktop/four_proof.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ControlEntradas_8_Prototipos_Pruebas
+          name: ControlEntradas_12_Prototipos_Pruebas
           path: dist-prototipos/*
           if-no-files-found: error
           retention-days: 30
