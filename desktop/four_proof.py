@@ -1,4 +1,4 @@
-"""Genera una prueba gráfica real de los cuatro modelos del motor.
+"""Genera pruebas gráficas de los doce modelos del motor.
 
 Se ejecuta en CI con datos de demostración; los QR no corresponden a entradas
 de clientes. La foto de prueba ocupa el lateral completo para verificar el JPG.
@@ -49,6 +49,6 @@ if True:
         color.save(destination/f'Modelo_{n+1}_color.png')
         mono.save(destination/f'Modelo_{n+1}_BN.png')
     ticket_printer.export_catalog_pdf(
-        event,ticket,destination/'Ocho_modelos_A4.pdf',design,
+        event,ticket,destination/'Doce_modelos_A4.pdf',design,
         templates=MODELS,width_mm=80,length_mm=135)
-    print("Ocho modelos A-H generados desde el mismo renderizador del EXE.")
+    print("Doce modelos A-L generados desde el mismo renderizador del EXE.")
