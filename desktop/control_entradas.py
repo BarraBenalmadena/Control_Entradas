@@ -613,9 +613,11 @@ def launch_gui():
     import subprocess
 
     root = tk.Tk()
-    root.title("Control de Entradas · v1.2")
-    root.geometry(f"1050x{min(920, max(660, root.winfo_screenheight()-90))}")
-    root.minsize(820, 550)
+    root.title(f"Control de Entradas · v{VERSION}")
+    screen_w=root.winfo_screenwidth()
+    screen_h=root.winfo_screenheight()
+    root.geometry(f"{min(1150,max(790,screen_w-80))}x{min(910,max(560,screen_h-100))}")
+    root.minsize(760, 510)
     style = ttk.Style()
     try:
         style.theme_use("clam")
@@ -625,8 +627,44 @@ def launch_gui():
     style.configure("Action.TButton", font=("Segoe UI", 10, "bold"), padding=(13, 9))
     style.configure("Other.TButton", font=("Segoe UI", 10), padding=(10, 8))
 
-    container = ttk.Frame(root, padding=(16, 12))
-    container.pack(fill="both", expand=True)
+    # Scroll real de la ventana principal, además del que tiene la tabla.
+    # El marco puede medir más que la pantalla; no se recortan acciones.
+    page = ttk.Frame(root)
+    page.pack(fill="both", expand=True)
+    page_canvas = tk.Canvas(page, highlightthickness=0, background="#eef3f8")
+    page_scroll = ttk.Scrollbar(page, orient="vertical", command=page_canvas.yview)
+    page_canvas.configure(yscrollcommand=page_scroll.set)
+    page_scroll.pack(side="right", fill="y")
+    page_canvas.pack(side="left", fill="both", expand=True)
+    container = ttk.Frame(page_canvas, padding=(16, 12))
+    page_window = page_canvas.create_window((0,0),window=container,anchor="nw")
+    container.bind("<Configure>",lambda *_: page_canvas.configure(
+        scrollregion=page_canvas.bbox("all")))
+    page_canvas.bind("<Configure>",lambda e: page_canvas.itemconfigure(
+        page_window,width=e.width))
+    def main_wheel(event):
+        # No secuestrar la rueda en la tabla ni en controles con scroll propio.
+        widget=event.widget
+        if widget.winfo_toplevel() is not root:
+            return
+        cursor=widget
+        while cursor is not root:
+            if isinstance(cursor,(ttk.Treeview,ttk.Combobox,ttk.Scrollbar,
+                                  tk.Text,tk.Listbox)):
+                return
+            cursor=cursor.master
+            if cursor is None: return
+        if event.num in (4,5):
+            direction=-1 if event.num==4 else 1
+        elif event.delta:
+            direction=-1 if event.delta>0 else 1
+        else:
+            return
+        page_canvas.yview_scroll(direction*3,"units")
+        return "break"
+    root.bind("<MouseWheel>",main_wheel,add="+")
+    root.bind("<Button-4>",main_wheel,add="+")
+    root.bind("<Button-5>",main_wheel,add="+")
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
     ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.23 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
