@@ -194,6 +194,40 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertEqual(len(CATALOG_NAMES),25)
         self.assertEqual(len(ticket_printer.TEMPLATES),36)
 
+    def test_uploaded_jpg_always_replaces_example_in_all_30_models(self):
+        from modern_catalog import MODELS
+        from unittest.mock import patch
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        event_id=app.create_event('Prueba JPG personalizado',
+                    '2027-12-17T19:00','libre',1)
+        event,ticket=app.get_ticket(event_id,1)
+        with TemporaryDirectory() as tmp:
+            default_photo=Path(tmp)/'example.jpg'
+            user_photo=Path(tmp)/'personalizada.jpg'
+            Image.new('RGB',(300,600),(18,130,18)).save(default_photo)
+            Image.new('RGB',(300,600),(240,25,25)).save(user_photo)
+            with patch('modern_catalog.art_path',return_value=default_photo):
+                for model in MODELS:
+                    fallback=ticket_printer.render_landscape_ticket(
+                        event,ticket,80,{'plantilla':model},color_preview=True)
+                    custom=ticket_printer.render_landscape_ticket(
+                        event,ticket,80,{'plantilla':model,
+                                         'poster':str(user_photo)},color_preview=True)
+                    self.assertNotEqual(fallback.crop((16,16,240,550)).tobytes(),
+                                        custom.crop((16,16,240,550)).tobytes(),
+                                        f'JPG ignorado en {model}')
+                    # QR y número firmados permanecen idénticos.
+                    self.assertEqual(
+                        fallback.crop((835,175,1050,396)).tobytes(),
+                        custom.crop((835,175,1050,396)).tobytes())
+                with self.assertRaises(FileNotFoundError):
+                    ticket_printer.render_landscape_ticket(
+                        event,ticket,80,
+                        {'plantilla':MODELS[0],
+                         'poster':str(Path(tmp)/'no_existe.jpg')},
+                        color_preview=True)
+
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
         from unittest.mock import patch
