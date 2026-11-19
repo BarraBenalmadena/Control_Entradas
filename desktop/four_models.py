@@ -15,13 +15,14 @@ import os
 import sys
 
 from alternative_models import MODELS as ADDITIONAL_MODELS
+from reference_models import MODELS as REFERENCE_MODELS
 
 MODELS = (
     "A · Violín y escudo",
     "B · Cascanueces y logotipo",
     "C · Navidad con diagonal",
     "D · Escenario y doble cabecera",
-) + ADDITIONAL_MODELS
+) + ADDITIONAL_MODELS + REFERENCE_MODELS
 INDEX = {name: index for index, name in enumerate(MODELS)}
 ART_NAMES = (
     "A_Violin.jpg", "B_Cascanueces.jpg",
@@ -103,6 +104,11 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     import ticket_printer as tp
 
     variant = INDEX[str(design["plantilla"])]
+    if variant >= 8:
+        from reference_models import render as render_reference
+        return render_reference(
+            event,ticket,width_mm,design,length_mm,
+            color_preview=color_preview)
     if variant >= 4:
         from alternative_models import render as render_alternative
         return render_alternative(
