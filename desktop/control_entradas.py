@@ -867,6 +867,7 @@ def launch_gui():
             'modo_impresion':tk.StringVar(value=config.get('modo_impresion','Normal')),
             'estilo_avisos':tk.StringVar(value=config.get('estilo_avisos','Según modelo')), 
             'tamano_logos':tk.StringVar(value=config.get('tamano_logos','Pequeños')),
+            'tamano_logo_pct':tk.StringVar(value=str(config.get('tamano_logo_pct','135'))),
             'estilo_escudo':tk.StringVar(value=config.get('estilo_escudo','Solo escudo')),
             'posicion_logos':tk.StringVar(value=config.get('posicion_logos','Según plantilla')),
             'margen_izquierdo_mm':tk.StringVar(value=str(config.get('margen_izquierdo_mm','2'))),
@@ -1012,6 +1013,7 @@ def launch_gui():
             'tamano_letra_pct':'Tamaño general de letras (%)',
             'tamano_cabecera_pct':'Tamaño de cabecera (%)',
             'tamano_fecha_pct':'Tamaño de fecha y hora (%)',
+            'tamano_logo_pct':'Tamaño de escudo/logotipo municipal (%) · 135 recomendado',
             'cabecera':'Cabecera',
             'subtitulo':'Subtítulo',
             'lugar':'Lugar',
@@ -1040,6 +1042,7 @@ def launch_gui():
             'tamano_letra_pct':percent_choices,
             'tamano_cabecera_pct':percent_choices,
             'tamano_fecha_pct':percent_choices,
+            'tamano_logo_pct':('100','115','125','135','145','150','160'),
         }
         for row,key in enumerate(labels):
             ttk.Label(art,text=labels[key]).grid(row=row,column=0,sticky='w',pady=4)
