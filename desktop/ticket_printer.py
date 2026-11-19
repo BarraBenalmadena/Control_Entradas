@@ -45,7 +45,12 @@ def _open_image(path: str | None):
         return None
     try:
         with Image.open(path) as src:
-            return ImageOps.exif_transpose(src).convert('RGB')
+            oriented=ImageOps.exif_transpose(src)
+            if 'A' in oriented.getbands() or 'transparency' in oriented.info:
+                rgba=oriented.convert('RGBA')
+                white=Image.new('RGBA',rgba.size,(255,255,255,255))
+                return Image.alpha_composite(white,rgba).convert('RGB')
+            return oriented.convert('RGB')
     except (OSError, ValueError):
         return None
 
