@@ -47,14 +47,72 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     poster=tp._open_image(design.get('poster'))
     if poster is None:
         with Image.open(art_path(idx)) as f: poster=f.convert('RGB')
-    artwork=ImageOps.fit(poster,(X(258),H-Y(26)),method=Image.Resampling.LANCZOS)
-    im.paste(artwork,(X(13),Y(13)))
+    # Art is independently pannable; all transformations stay inside its
+    # allocated slot and never touch the independently encoded QR/Code128.
+    zoom=tp._setting_number(design,'foto_zoom_pct',100,60,250)/100.
+    fx=tp._setting_number(design,'foto_centro_x_pct',50,0,100)/100.
+    fy=tp._setting_number(design,'foto_centro_y_pct',50,0,100)/100.
+    fit=str(design.get('ajuste_imagen','Rellenar y recortar'))
+    art_w,art_h=X(258),H-Y(26)
+    if fit=='Mostrar completa':
+        foundation=ImageOps.contain(poster,(max(1,int(art_w*zoom)),
+                                            max(1,int(art_h*zoom))),
+                                     method=Image.Resampling.LANCZOS)
+        canvas=Image.new('RGB',(art_w,art_h),'white')
+        posx=round((art_w-foundation.width)*fx)
+        posy=round((art_h-foundation.height)*fy)
+        canvas.paste(foundation,(posx,posy))
+        artwork=canvas
+    else:
+        desired_w=max(1,round(art_w*zoom))
+        desired_h=max(1,round(art_h*zoom))
+        if zoom>=1:
+            enlarged=ImageOps.fit(poster,(desired_w,desired_h),
+                  method=Image.Resampling.LANCZOS,centering=(fx,fy))
+            left=round((desired_w-art_w)*fx)
+            top=round((desired_h-art_h)*fy)
+            artwork=enlarged.crop((left,top,left+art_w,top+art_h))
+        else:
+            small=ImageOps.fit(poster,(desired_w,desired_h),
+                  method=Image.Resampling.LANCZOS,centering=(fx,fy))
+            artwork=Image.new('RGB',(art_w,art_h),'white')
+            artwork.paste(small,(round((art_w-desired_w)*fx),
+                                 round((art_h-desired_h)*fy)))
+    # Six genuinely different geometric photo masks, not a pasted rectangle.
+    # The image panel is separately masked; the design decoration remains.
+    mask=Image.new('L',(art_w,art_h),0)
+    md=ImageDraw.Draw(mask)
+    variant=(idx-1)%6
+    if variant==0:  # diagonal
+        md.polygon([(0,0),(art_w,0),(round(.82*art_w),art_h),
+                    (0,art_h)],fill=255)
+    elif variant==1:  # curved edge
+        md.ellipse((-art_w,round(-.13*art_h),
+                    round(1.73*art_w),round(1.2*art_h)),fill=255)
+    elif variant==2:  # stepped geometric
+        md.polygon([(0,0),(art_w,0),(round(.88*art_w),round(.32*art_h)),
+                    (art_w,round(.58*art_h)),(round(.66*art_w),art_h),
+                    (0,art_h)],fill=255)
+    elif variant==3:  # theatrical arc
+        md.polygon([(0,0),(art_w,0),(round(.68*art_w),round(.16*art_h)),
+                    (round(.87*art_w),round(.48*art_h)),
+                    (round(.7*art_w),round(.84*art_h)),
+                    (art_w,art_h),(0,art_h)],fill=255)
+    elif variant==4:  # rounded angled frame
+        md.rounded_rectangle((0,0,art_w-2,art_h-2),
+                             radius=Y(68),fill=255)
+    else:  # double-angle
+        md.polygon([(0,0),(round(.83*art_w),0),(art_w,round(.46*art_h)),
+                    (round(.77*art_w),art_h),(0,art_h)],fill=255)
+    im.paste(artwork,(X(13),Y(13)),mask)
     dr=ImageDraw.Draw(im)
-    # Dedicated diagonal/curve separator, never covers content or codes.
-    dr.polygon([(X(245),Y(13)),(X(272),Y(13)),(X(254),H-Y(13)),
-                (X(223),H-Y(13))],fill='#ffffff')
-    dr.line([(X(247),Y(13)),(X(227),H-Y(15))],
-            fill=color,width=max(1,Y(4)))
+    borders=[((247,15),(224,558)),((258,16),(234,554)),
+             ((252,18),(234,207),(261,341),(216,555)),
+             ((265,17),(193,105),(254,286),(192,458),(251,555)),
+             ((224,15),(257,95),(254,455),(224,557)),
+             ((223,17),(267,276),(213,557))]
+    dr.line([(X(a),Y(b)) for a,b in borders[variant]],
+            fill=color,width=max(2,Y(4)),joint='curve')
     # Main content remains fully parametric and optically clean.
     dr.rounded_rectangle((X(286),Y(124),X(790),Y(243)),
                          radius=Y(11),fill=('#173c51' if dark else '#ffffff'),
@@ -68,17 +126,40 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
             size=max(8,Y(size)),bold=bold,lines=lines,
             min_size=max(7,Y(mini)),fill=fg)
     ayto=tp._open_image(design.get('logo_ayto'))
-    if ayto is not None:
-        tp._fitted(im,ayto,(X(285),Y(26),X(347),Y(102)),'Mostrar completa')
-    else:
-        center('BENALMÁDENA',(280,45,357,95),14,color,2,mini=8)
     centro=tp._open_image(design.get('logo_centro'))
-    if centro is not None:
-        tp._fitted(im,centro,(X(740),Y(29),X(796),Y(98)),'Mostrar completa')
+    def draw_logo(source,coords):
+        # Crop excess transparent/pale margins before fitting a horizontal
+        # Education logo; preserve color and aspect, never distort.
+        img=source.convert('RGBA')
+        a=img.getchannel('A')
+        bounds=a.point(lambda v:255 if v>15 else 0).getbbox()
+        if bounds is not None:img=img.crop(bounds)
+        desired=(max(1,X(coords[2]-coords[0])),
+                 max(1,Y(coords[3]-coords[1])))
+        contained=ImageOps.contain(img,desired,Image.Resampling.LANCZOS)
+        px=X(coords[0])+(desired[0]-contained.width)//2
+        py=Y(coords[1])+(desired[1]-contained.height)//2
+        im.paste(contained,(px,py),contained)
     header=str(design.get('cabecera') or 'Escuela Municipal de Música y Danza')
     subtitle=str(design.get('subtitulo') or 'Arroyo de la Miel')
-    center(header,(355,22,746,74),27,'#152b47',2,mini=14)
-    center(subtitle,(357,74,744,108),20,color,1,mini=11)
+    is_wide=ayto is not None and ayto.width/max(1,ayto.height)>=2.1
+    logo_position=str(design.get('posicion_logos','Según plantilla'))
+    if is_wide:
+        # Wide uploaded Education logo takes priority: no duplicate caption.
+        area=(288,13,797,112) if centro is None else (285,13,725,112)
+        draw_logo(ayto,area)
+        if centro is not None:draw_logo(centro,(739,23,796,107))
+    else:
+        if ayto is not None:
+            pos=(281,21,352,107) if logo_position!='Derecha' else (739,21,797,107)
+            draw_logo(ayto,pos)
+        else:
+            center('BENALMÁDENA',(280,45,357,95),14,color,2,mini=8)
+        center(header,(352,19,740,74),25,'#152b47',2,mini=14)
+        center(subtitle,(355,75,741,109),19,color,1,mini=11)
+        if centro is not None:
+            pos=(740,22,796,104) if logo_position!='Derecha' else (281,25,349,107)
+            draw_logo(centro,pos)
     d=datetime.fromisoformat(str(event['start_time']))
     center(str(event['name']),(300,146,778,222),43,
            '#ffffff' if dark else color,lines=2,mini=17)
