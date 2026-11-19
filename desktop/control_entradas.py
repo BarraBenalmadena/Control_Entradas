@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.22"
+VERSION = "2.23"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.22 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.23 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -804,14 +804,20 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · v2.22')
-        win.geometry('1000x790')
-        win.minsize(800,645)
+        win.title('Diseñador de entradas · v2.23')
+        screen_w=win.winfo_screenwidth()
+        screen_h=win.winfo_screenheight()
+        window_w=min(1180,max(780,screen_w-70))
+        window_h=min(840,max(580,screen_h-100))
+        win.geometry(f'{window_w}x{window_h}+{max(0,(screen_w-window_w)//2)}+{max(0,(screen_h-window_h)//3)}')
+        win.minsize(750,550)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='8 MODELOS PRINCIPALES · A / B / C / D / E / F / G / H',font=('Segoe UI',16,'bold')).pack(anchor='w')
-        ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
+        outer.columnconfigure(0,weight=1)
+        outer.rowconfigure(2,weight=1)
+        ttk.Label(outer,text='12 MODELOS DE ENTRADAS · A–L',font=('Segoe UI',16,'bold')).grid(row=0,column=0,sticky='w')
+        ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").grid(row=1,column=0,sticky='w',pady=(0,6))
 
         config=get_ticket_design(event_id)
         prefs_path=DATA_DIR/'impresora.json'
@@ -879,16 +885,27 @@ def launch_gui():
             'logo_centro':tk.StringVar(value=config.get('logo_centro','')),
         }
         notebook=ttk.Notebook(outer)
-        notebook.pack(fill='both',expand=True)
-        page_print=ttk.Frame(notebook,padding=14)
-        page_design=ttk.Frame(notebook,padding=14)
+        notebook.grid(row=2,column=0,sticky='nsew')
+        page_print=ttk.Frame(notebook,padding=5)
+        page_design=ttk.Frame(notebook,padding=7)
         notebook.add(page_print,text='  1 · Impresión por lotes  ')
         notebook.add(page_design,text='  2 · Diseñar entrada  ')
-        ticket_group=ttk.LabelFrame(page_print,text='Intervalo de entradas',padding=12)
+        # El contenido de impresión se desplaza, pero la barra de acciones
+        # generales permanece fija y visible en la ventana.
+        print_canvas=tk.Canvas(page_print,highlightthickness=0)
+        print_scroll=ttk.Scrollbar(page_print,orient='vertical',command=print_canvas.yview)
+        print_canvas.configure(yscrollcommand=print_scroll.set)
+        print_canvas.pack(side='left',fill='both',expand=True)
+        print_scroll.pack(side='right',fill='y')
+        print_body=ttk.Frame(print_canvas,padding=7)
+        print_window=print_canvas.create_window((0,0),window=print_body,anchor='nw')
+        print_body.bind('<Configure>',lambda *_:print_canvas.configure(scrollregion=print_canvas.bbox('all')))
+        print_canvas.bind('<Configure>',lambda e:print_canvas.itemconfigure(print_window,width=e.width))
+        ticket_group=ttk.LabelFrame(print_body,text='Intervalo de entradas',padding=9)
         ticket_group.pack(fill='x',pady=(0,6))
         # Las acciones de impresión deben estar siempre visibles, nunca en
         # la fila inferior que se desborda fuera de la ventana de 1000 px.
-        print_actions=ttk.LabelFrame(page_print,text='ENVIAR ENTRADAS A LA IMPRESORA ZYWELL',padding=9)
+        print_actions=ttk.LabelFrame(print_body,text='ENVIAR ENTRADAS A LA IMPRESORA ZYWELL',padding=9)
         print_actions.pack(fill='x',pady=(0,8))
         ttk.Label(print_actions,text='Selecciona número inicial y cantidad; pulsa IMPRIMIR LOTE. Se pedirá confirmación.').pack(anchor='w',pady=(0,7))
         print_buttons=ttk.Frame(print_actions)
@@ -912,7 +929,7 @@ def launch_gui():
         start_num.trace_add('write',update_range)
         qty.trace_add('write',update_range)
         update_range()
-        printer_group=ttk.LabelFrame(page_print,text='Impresora ZYWELL y calibración',padding=12)
+        printer_group=ttk.LabelFrame(print_body,text='Impresora ZYWELL y calibración',padding=10)
         printer_group.pack(fill='x',pady=(0,9))
         ttk.Label(printer_group,text='Impresora de Windows').grid(row=0,column=0,sticky='w',pady=6)
         printer_combo=ttk.Combobox(printer_group,textvariable=printer,values=printers,width=44,state='readonly')
@@ -936,7 +953,7 @@ def launch_gui():
         ttk.Checkbutton(printer_group,text='Cortar cada ticket (ESC/POS)',variable=cut).grid(row=3,column=0,columnspan=2,sticky='w',pady=6)
         ttk.Combobox(printer_group,textvariable=cut_type,values=('Completo','Parcial'),width=12,state='readonly').grid(row=3,column=2,columnspan=2,sticky='w',padx=7)
         printer_group.columnconfigure(1,weight=1)
-        ttk.Label(page_print,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
+        ttk.Label(print_body,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
                                   'ZYWELL compatible: GS V 66 0, corte PARCIAL con avance, según manual POS-80XX.\n'
                                   'Primero usa Prueba de calibración; después imprime SOLO 2 tickets. El modelo importa.\n'
                                   'El largo determina el papel REAL; ya no deforma los elementos del diseño.',
@@ -1023,9 +1040,14 @@ def launch_gui():
             wraplength=890,justify='left').pack(anchor='w',pady=10)
 
         note=tk.StringVar(value='Elige una plantilla y comprueba la vista previa. Se respetan los datos y las entradas existentes.')
-        ttk.Label(outer,textvariable=note,wraplength=880,foreground='#1d5376').pack(anchor='w',pady=(7,5))
+        ttk.Label(outer,textvariable=note,wraplength=1050,foreground='#1d5376').grid(
+            row=3,column=0,sticky='ew',pady=(4,3))
         actions=ttk.Frame(outer)
-        actions.pack(fill='x')
+        actions.grid(row=4,column=0,sticky='ew')
+        actions_top=ttk.Frame(actions)
+        actions_top.pack(fill='x')
+        actions_bottom=ttk.Frame(actions)
+        actions_bottom.pack(fill='x',pady=(3,0))
         def valid_range():
             try:
                 first=int(start_num.get());count=int(qty.get())
@@ -1341,11 +1363,11 @@ def launch_gui():
                     f'{total} accesos restablecidos en Windows. Debes sincronizar o renovar el JSON de los móviles.',parent=win)
             except Exception as ex:messagebox.showerror('Restablecimiento',str(ex),parent=win)
         ttk.Button(ticket_group,text='RESTABLECER ACCESOS',command=reset_confirmed).grid(row=2,column=0,columnspan=4,sticky='w',pady=(8,2))
-        ttk.Button(actions,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
-        ttk.Button(actions,text='VER DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
-        ttk.Button(actions,text='Vista previa',command=preview).pack(side='left',padx=3)
-        ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
-        ttk.Button(actions,text='PRUEBA A4 (IMPRESORA DE OFICINA)',
+        ttk.Button(actions_top,text='Guardar diseño',command=save_design).pack(side='left',padx=3)
+        ttk.Button(actions_top,text='VER 12 DISEÑOS',command=gallery,style='Action.TButton').pack(side='left',padx=3)
+        ttk.Button(actions_top,text='Vista previa',command=preview).pack(side='left',padx=3)
+        ttk.Button(actions_top,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
+        ttk.Button(actions_bottom,text='IMPRIMIR PRUEBA A4 (IMPRESORA NORMAL)',
                    command=paper_a4_proof).pack(side='left',padx=4)
         ttk.Button(print_buttons,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=4)
         ttk.Button(print_buttons,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=4)
@@ -1359,7 +1381,10 @@ def launch_gui():
         print_button=ttk.Button(print_buttons,text='IMPRIMIR LOTE EN ZYWELL',
                    command=print_batch,style='Action.TButton')
         print_button.pack(side='left',padx=4)
-        ttk.Label(outer,text='Primero calibra con la tira de prueba. Usa el modo ZYWELL compatible; si no corta, necesitamos el modelo exacto.',foreground='#7a4630').pack(anchor='w',pady=8)
+        ttk.Label(outer,text='Para imprimir tickets: pestaña 1 → IMPRESIÓN ZYWELL → IMPRIMIR LOTE. '
+                  'Para impresora normal: botón A4 de esta barra.',
+                  foreground='#7a4630',wraplength=1050).grid(
+                      row=5,column=0,sticky='w',pady=(4,1))
 
     def open_seat_plan():
         eid=selected_event()
