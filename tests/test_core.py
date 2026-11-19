@@ -140,10 +140,10 @@ class ControlEntradasTests(unittest.TestCase):
         event,ticket=app.get_ticket(eid,1)
         with tempfile.TemporaryDirectory() as folder:
             src=Path(folder)/"reference.jpg"
-            background=Image.new("RGB",(1080,576),"white")
+            background=Image.new("RGB",(372,158),"white")
             painter=ImageDraw.Draw(background)
-            painter.rectangle((0,0,180,575),fill=(174,20,90))
-            painter.rectangle((700,0,745,200),fill=(255,215,0))
+            painter.rectangle((0,0,90,157),fill=(174,20,90))
+            painter.rectangle((235,0,256,50),fill=(255,215,0))
             background.save(src,quality=95)
             design={"plantilla":CATALOG_NAMES[0]}
             with patch("ticket_printer.catalog_asset",return_value=src):
