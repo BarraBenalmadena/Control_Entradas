@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "2.17"
+VERSION = "2.18"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
@@ -528,7 +528,7 @@ def launch_gui():
     container = ttk.Frame(root, padding=(16, 12))
     container.pack(fill="both", expand=True)
     ttk.Label(container, text="CONTROL DE ENTRADAS", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.17 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(container, text="Escuela Municipal de Música y Danza · v2.18 · Gestión y validación", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
     net_frame = ttk.LabelFrame(container, text="Conexión de lectores Android", padding=(10, 7))
     net_frame.pack(fill="x")
@@ -699,6 +699,51 @@ def launch_gui():
         else:
             subprocess.Popen(["xdg-open", str(path)])
 
+    def print_office_pdf(pdf_path,parent):
+        # Selector explícito de impresora de oficina. Windows recibe páginas
+        # gráficas a través de su driver; no se abre un visor ni se envía RAW.
+        names=ticket_printer.office_printers()
+        if not names:
+            messagebox.showerror('Impresora A4',
+                'No se ha detectado ninguna impresora de oficina en Windows. '
+                'Instala o conecta una impresora A4 y pulsa de nuevo.',parent=parent)
+            return
+        last=DATA_DIR/'impresora_a4.txt'
+        previous=last.read_text(encoding='utf-8').strip() if last.is_file() else ''
+        selected=tk.StringVar(value=previous if previous in names else names[0])
+        chooser=tk.Toplevel(parent)
+        chooser.title('Enviar a impresora normal A4')
+        chooser.geometry('530x205')
+        chooser.transient(parent)
+        chooser.grab_set()
+        panel=ttk.Frame(chooser,padding=16)
+        panel.pack(fill='both',expand=True)
+        ttk.Label(panel,text='Selecciona la impresora A4 de Windows',
+                  font=('Segoe UI',12,'bold')).pack(anchor='w',pady=(0,10))
+        ttk.Combobox(panel,textvariable=selected,values=names,
+                     state='readonly',width=56).pack(fill='x',pady=(0,10))
+        ttk.Label(panel,text='Impresión directa por el controlador de Windows. '
+                  'La impresora ZYWELL se utiliza en su apartado separado.',
+                  wraplength=470).pack(anchor='w')
+        buttons=ttk.Frame(panel)
+        buttons.pack(fill='x',pady=(13,0))
+        def send():
+            name=selected.get()
+            try:
+                job,pages=ticket_printer.print_pdf_windows(Path(pdf_path),name)
+                last.write_text(name,encoding='utf-8')
+            except Exception as ex:
+                messagebox.showerror('Impresión A4',str(ex),parent=chooser)
+                return
+            chooser.destroy()
+            messagebox.showinfo('Enviado a Windows',
+                f'{pages} página(s) enviadas a la cola de {name}. '
+                f'Trabajo {job}. Comprueba la impresión física.',
+                parent=parent)
+        ttk.Button(buttons,text='Cancelar',command=chooser.destroy).pack(side='right',padx=4)
+        ttk.Button(buttons,text='IMPRIMIR A4 AHORA',command=send,
+                   style='Action.TButton').pack(side='right',padx=4)
+
     def preview_file():
         event_id = selected_event()
         if not event_id:
@@ -741,12 +786,7 @@ def launch_gui():
     def print_pdf():
         result = preview_file()
         if result:
-            messagebox.showinfo("Elegir impresora", "Se abrirá el PDF con las entradas.\n\nPulsa Ctrl + P en el visor para elegir tu impresora de Windows, las páginas y el número de copias.")
-            try:
-                open_file(result[0])
-                helptext.set("Pulsa Ctrl + P en la vista previa del PDF para imprimir con tu impresora.")
-            except Exception as ex:
-                messagebox.showerror("No se pudo abrir la impresión", f"PDF generado en:\n{result[0]}\n\n{ex}")
+            print_office_pdf(result[0],root)
 
     def open_thermal_ticket():
         event_id = selected_event()
@@ -763,13 +803,13 @@ def launch_gui():
             messagebox.showerror('Función inexistente', 'La función seleccionada ya no existe.')
             return
         win=tk.Toplevel(root)
-        win.title('Diseñador de entradas · ZYWELL · v2.17')
+        win.title('Diseñador de entradas · v2.18')
         win.geometry('1000x790')
         win.minsize(800,645)
         win.transient(root)
         outer=ttk.Frame(win,padding=12)
         outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='CATÁLOGO NUEVO · 30 DISEÑOS / VERSIONES BÁSICAS · 36',font=('Segoe UI',16,'bold')).pack(anchor='w')
+        ttk.Label(outer,text='CATÁLOGO PRINCIPAL · 30 MODELOS',font=('Segoe UI',16,'bold')).pack(anchor='w')
         ttk.Label(outer,text=f"{event['name']}  ·  {event['capacity']} entradas  ·  {event['mode']}").pack(anchor='w',pady=(0,8))
 
         config=get_ticket_design(event_id)
@@ -894,7 +934,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Diseño (30 nuevos + 25 anteriores + 36 básicos)',
+            'plantilla':'Modelo principal (30 disponibles)',
             'posicion_logos':'Posición de los dos logotipos',
             'tamano_logos':'Tamaño de logotipos',
             'estilo_escudo':'Escudo municipal en catálogo nuevo',
@@ -922,7 +962,7 @@ def launch_gui():
         margin_choices=('0','0.5','1','1.5','2','2.5','3','3.5','4','5','6','8','10','12','15','18')
         percent_choices=('70','80','90','100','110','120','130','140')
         combos={
-            'plantilla':MODERN_MODELS+CATALOG_NAMES+ticket_printer.TEMPLATES,
+            'plantilla':MODERN_MODELS + ((chosen,) if chosen not in MODERN_MODELS and chosen in CATALOG_NAMES+ticket_printer.TEMPLATES else ()),
             'posicion_logos':ticket_printer.LOGO_POSITIONS,
             'ajuste_imagen':ticket_printer.IMAGE_FITS,
             'foto_centro_x_pct':tuple(str(i) for i in range(0,101,10)),
@@ -1095,35 +1135,7 @@ def launch_gui():
                 option_controls.pack(fill='x',pady=(0,4))
                 photo_controls=ttk.Frame(gallery_controls)
                 photo_controls.pack(fill='x',pady=(0,4))
-                def gallery_switch(other):
-                    gallery_win.destroy()
-                    gallery(other,show_model_art)
-                ttk.Button(group_controls,text='DISEÑOS NUEVOS (30)',
-                           command=lambda:gallery_switch('catalogo')).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='CATÁLOGO ANTERIOR (25)',
-                           command=lambda:gallery_switch('anteriores')).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='VERSIONES BÁSICAS (36)',
-                           command=lambda:gallery_switch('basicas')).pack(side='left',padx=4)
-                ttk.Label(option_controls,
-                          text={'catalogo':'30 diseños nuevos','anteriores':'25 anteriores','basicas':'36 básicos'}.get(collection,'')
-                          ).pack(side='left',padx=5)
-                def gallery_style(style):
-                    variables['modo_impresion'].set(style)
-                    gallery_win.destroy()
-                    gallery(collection,show_model_art)
-                ttk.Button(option_controls,text='NORMAL (NEGRO)',
-                           command=lambda:gallery_style('Normal')).pack(side='left',padx=5)
-                ttk.Button(option_controls,text='BLANCO ECONÓMICO',
-                           command=lambda:gallery_style('Blanco económico')).pack(side='left',padx=5)
-                def gallery_notices(style):
-                    variables['estilo_avisos'].set(style)
-                    gallery_win.destroy()
-                    gallery(collection,show_model_art)
-                ttk.Button(option_controls,text='AVISOS B · RECUADRO',
-                           command=lambda:gallery_notices('B · Recuadro')).pack(side='left',padx=5)
-                ttk.Button(option_controls,text='AVISOS D · SEPARADORES',
-                           command=lambda:gallery_notices('D · Separadores')).pack(side='left',padx=5)
-                ttk.Label(option_controls,text='Mostrando: '+variables['modo_impresion'].get()+' / '+variables['estilo_avisos'].get()).pack(side='left',padx=9)
+                ttk.Label(group_controls,text='30 modelos activos · Los anteriores se conservan archivados').pack(side='left',padx=5)
                 def import_from_word():
                     selected=filedialog.askopenfilename(
                         parent=gallery_win,
@@ -1157,7 +1169,7 @@ def launch_gui():
                 ttk.Label(photo_controls,
                     text='Fotografías originales' if show_model_art else 'Cartel personalizado'
                     ).pack(side='left',padx=8)
-                templates=(MODERN_MODELS if collection=='catalogo' else CATALOG_NAMES if collection=='anteriores' else ticket_printer.TEMPLATES)
+                templates=MODERN_MODELS
                 def create_printable_catalog(print_now=False):
                     try:
                         spec=current_design(save=False)
@@ -1170,17 +1182,15 @@ def launch_gui():
                         if not target:return
                         ticket_printer.export_catalog_pdf(ev,tkdata,Path(target),spec,
                                   templates,width_mm=int(roll.get()),length_mm=ticket_length())
-                        open_file(Path(target))
                         if print_now:
-                            messagebox.showinfo('Imprimir catálogo',
-                                'PDF abierto. Pulsa Ctrl + P para imprimir en papel A4 '
-                                '(dos columnas, con el nombre de cada diseño).',
-                                parent=gallery_win)
+                            print_office_pdf(Path(target),gallery_win)
+                        else:
+                            open_file(Path(target))
                     except Exception as ex:
                         messagebox.showerror('Catálogo PDF',str(ex),parent=gallery_win)
-                ttk.Button(group_controls,text='EXPORTAR PDF A4 · 2 COLUMNAS',
+                ttk.Button(group_controls,text='GUARDAR PDF A4 · 2 COLUMNAS',
                            command=lambda:create_printable_catalog(False)).pack(side='left',padx=4)
-                ttk.Button(group_controls,text='IMPRIMIR CATÁLOGO',
+                ttk.Button(group_controls,text='IMPRIMIR A4 · 30 MODELOS',
                            command=lambda:create_printable_catalog(True)).pack(side='left',padx=4)
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
@@ -1253,8 +1263,8 @@ def launch_gui():
                 ticket_printer.export_catalog_pdf(ev,item,dest,spec,
                     templates=[spec['plantilla']],
                     width_mm=int(roll.get()),length_mm=ticket_length())
-                open_file(dest)
-                note.set('Prueba A4 abierta. Usa Ctrl + P para seleccionar la impresora de Windows.')
+                print_office_pdf(dest,win)
+                note.set('Prueba A4 preparada para envío directo a la impresora de oficina.')
             except Exception as ex:
                 messagebox.showerror('Prueba A4',str(ex),parent=win)
         def calibration_test():
