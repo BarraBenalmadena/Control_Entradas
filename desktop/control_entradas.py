@@ -955,7 +955,7 @@ def launch_gui():
             'cabecera':'Cabecera',
             'subtitulo':'Subtítulo',
             'lugar':'Lugar',
-            'poster':'Cartel del espectáculo (JPG/PNG)',
+            'poster':'Fotografía lateral (JPG/PNG) · sustituye a la del modelo',
             'logo_ayto':'Logo del Ayuntamiento',
             'logo_centro':'Logo de la escuela/centro',
         }
@@ -992,7 +992,10 @@ def launch_gui():
                 def pick_image(k=key):
                     selected=filedialog.askopenfilename(parent=win,title=labels[k],
                         filetypes=[('Imágenes','*.jpg *.jpeg *.png *.bmp *.webp')])
-                    if selected: variables[k].set(selected)
+                    if selected:
+                        variables[k].set(selected)
+                        if k=='poster':
+                            note.set('Fotografía JPG seleccionada: tendrá prioridad sobre la imagen del modelo. Pulsa Vista previa para comprobarla.')
                 ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=row,column=2,padx=5)
                 if key=='logo_ayto':
                     def use_education_logo():
@@ -1107,7 +1110,7 @@ def launch_gui():
                 ttk.Button(fr,text='Cerrar',command=popup.destroy).pack(pady=8)
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
-        def gallery(collection='catalogo',show_model_art=True):
+        def gallery(collection='catalogo'):
             try:
                 numbers=valid_range()
                 if not numbers:return
@@ -1156,25 +1159,28 @@ def launch_gui():
                         'Los números, QR, títulos y códigos de barras se generan '
                         'con los datos de cada entrada.',parent=gallery_win)
                     gallery_win.destroy()
-                    gallery('catalogo',True)
-                def toggle_model_art(value):
+                    gallery('catalogo')
+                def restore_default_photo():
+                    if not variables['poster'].get().strip():
+                        messagebox.showinfo('Fotografía','Ya estás usando la imagen de ejemplo.',parent=gallery_win)
+                        return
+                    if not messagebox.askyesno('Volver a la foto del modelo',
+                         '¿Quitar el JPG personalizado de esta función y usar las imágenes '
+                         'de ejemplo de los modelos?\n\nEl archivo original no se borrará.',
+                         parent=gallery_win):
+                        return
+                    variables['poster'].set('')
                     gallery_win.destroy()
-                    gallery(collection,value)
-                ttk.Button(photo_controls,text='IMPORTAR 8 IMÁGENES DEL WORD',
-                    command=import_from_word).pack(side='left',padx=4)
-                ttk.Button(photo_controls,text='VER FOTOS DE LOS MODELOS',
-                    command=lambda:toggle_model_art(True)).pack(side='left',padx=4)
-                ttk.Button(photo_controls,text='VER CON MI CARTEL',
-                    command=lambda:toggle_model_art(False)).pack(side='left',padx=4)
+                    gallery('catalogo')
+                ttk.Button(photo_controls,text='USAR FOTO DE EJEMPLO',
+                    command=restore_default_photo).pack(side='left',padx=4)
                 ttk.Label(photo_controls,
-                    text='Fotografías originales' if show_model_art else 'Cartel personalizado'
+                    text='Tu JPG adjuntado tiene prioridad; sin JPG se usa la foto del modelo.'
                     ).pack(side='left',padx=8)
                 templates=MODERN_MODELS
                 def create_printable_catalog(print_now=False):
                     try:
                         spec=current_design(save=False)
-                        if collection=='catalogo' and show_model_art:
-                            spec['poster']=''
                         target=(DATA_DIR/'Catalogo_Entradas_A4.pdf') if print_now else filedialog.asksaveasfilename(
                             parent=gallery_win,title='Guardar catálogo para compañeros',
                             initialfile='Catalogo_Entradas_A4.pdf',defaultextension='.pdf',
@@ -1195,8 +1201,6 @@ def launch_gui():
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
                     copy=dict(d);copy['plantilla']=template
-                    if collection=='catalogo' and show_model_art:
-                        copy['poster']=''
                     try:
                         pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
                                                   length_mm=ticket_length(),color_preview=True)
@@ -1228,8 +1232,6 @@ def launch_gui():
                               foreground='#42586a').pack(anchor='center',pady=(2,0))
                     def choose(t=template):
                         variables['plantilla'].set(t)
-                        if collection=='catalogo' and show_model_art:
-                            variables['poster'].set('')
                         variables['modo_impresion'].set(d.get('modo_impresion','Normal'))
                         notebook.select(page_design)
                         note.set(f'Diseño seleccionado: {t}. Puedes ajustar el cartel, tamaño de logos y guardar.')
