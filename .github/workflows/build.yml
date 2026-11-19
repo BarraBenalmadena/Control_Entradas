@@ -11,6 +11,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Guardar fuente para revisión visual de los 25 diseños
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControlEntradas_Fuente_Verificacion
+          path: |
+            desktop/*.py
+            desktop/requirements.txt
+          retention-days: 7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
