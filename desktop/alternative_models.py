@@ -163,39 +163,45 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         smooth((body[0],138),(body[0]+250,123),(body[1]-10,133),
                "#8ed2f5",3)
 
-    # Logos: NUNCA imágenes generadas, solo archivos seleccionados.
+    # Escudo municipal cargado por el usuario: ocupar más ancho sin
+    # superponer nombre de la escuela ni el panel de validación.
     crest=_logo(tp,design,"logo_ayto")
     school=_logo(tp,design,"logo_centro")
     short=crest is not None and crest.width <= crest.height*1.65
     L,R=body
+    factor=tp._setting_number(design,"tamano_logo_pct",135,100,160)
     if short:
-        draw_logo(crest,(L+5,17,L+75,122))
+        crest_width=min(122,round(104*factor/135))
+        draw_logo(crest,(L+4,8,L+4+crest_width,136))
+        header_left=L+crest_width+14
         if school is not None:
-            draw_logo(school,(R-165,18,R-4,116))
-            header_left=L+82
-            header_right=R-173
+            draw_logo(school,(R-116,15,R-4,124))
+            header_right=R-124
         else:
-            header_left=L+84
             header_right=R-5
     elif crest is not None:
-        draw_logo(crest,(R-203,21,R-6,118))
+        wide_width=min(258,round(222*factor/135))
+        draw_logo(crest,(R-wide_width,10,R-4,134))
         if school is not None:
-            draw_logo(school,(L+3,18,L+67,112))
-            header_left=L+73
+            draw_logo(school,(L+4,18,L+78,123))
+            header_left=L+83
         else:
             header_left=L+5
-        header_right=R-211
+        header_right=R-wide_width-9
     elif school is not None:
-        draw_logo(school,(L+3,17,L+82,116))
-        header_left=L+86
-        header_right=R-4
+        draw_logo(school,(L+4,10,L+112,133))
+        header_left=L+119
+        header_right=R-5
     else:
         header_left=L+5
-        header_right=R-4
+        header_right=R-5
+    if header_right-header_left < 156:
+        raise ValueError("No hay espacio para ambos logotipos y la escuela. "
+                         "Prueba un logotipo más pequeño o elimina el secundario.")
     txt(design.get("cabecera") or "Escuela Municipal de Música y Danza",
-        (header_left,18,header_right,82),31,NAVY,2,14,hs)
+        (header_left,15,header_right,78),32,NAVY,2,13,hs)
     txt(design.get("subtitulo") or "Arroyo de la Miel",
-        (header_left,83,header_right,125),20,accent,1,12,hs)
+        (header_left,81,header_right,124),21,accent,1,11,hs)
     if index in (0,1):
         smooth((L+9,133),((L+R)/2,142),(R-9,128),GOLD,3)
     elif index==2:
