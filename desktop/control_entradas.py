@@ -1183,8 +1183,19 @@ def launch_gui():
                     copy=dict(d);copy['plantilla']=template
                     if collection=='catalogo' and show_model_art:
                         copy['poster']=''
-                    pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
-                                              length_mm=ticket_length(),color_preview=True)
+                    try:
+                        pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
+                                                  length_mm=ticket_length(),color_preview=True)
+                    except FileNotFoundError as missing:
+                        # Una plantilla antigua sin su JPG nunca debe impedir
+                        # abrir los demás modelos disponibles.
+                        unavailable=ttk.LabelFrame(inner,text=template,padding=8)
+                        unavailable.grid(row=i//2,column=i%2,padx=6,pady=6,sticky='nsew')
+                        ttk.Label(unavailable,text='Falta la imagen original de este modelo.',
+                            foreground='#9b3333').pack(anchor='w')
+                        ttk.Label(unavailable,text=str(missing),
+                            wraplength=400).pack(anchor='w',pady=7)
+                        continue
                     art_w,art_h=470,248
                     pic.thumbnail((art_w,art_h),Image.Resampling.LANCZOS)
                     paper=Image.new('RGB',(484,264),'#ececec')
