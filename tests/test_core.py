@@ -112,6 +112,24 @@ class ControlEntradasTests(unittest.TestCase):
                 region=ticket_image.crop((left,top,right,bottom)).convert("L")
                 self.assertLess(region.getextrema()[0],55)
 
+    def test_primary_catalog_entries_and_a4_two_column_export(self):
+        from catalog_models import CATALOG_NAMES, CATALOG_INDEX
+        self.assertEqual(len(CATALOG_NAMES),25)
+        self.assertEqual(len(set(CATALOG_NAMES)),25)
+        self.assertEqual(len(CATALOG_INDEX),25)
+        eid=app.create_event("Catálogo en papel","2027-05-01T19:00","libre",1)
+        event,ticket=app.get_ticket(eid,1)
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as tmp:
+            destination=Path(tmp)/'catalogo.pdf'
+            ticket_printer.export_catalog_pdf(event,ticket,destination,
+                                              {"estilo_avisos":"B · Recuadro"},
+                                              templates=ticket_printer.TEMPLATES[:3],
+                                              width_mm=80,length_mm=135)
+            self.assertTrue(destination.read_bytes().startswith(b'%PDF-'))
+            self.assertGreater(destination.stat().st_size,10000)
+
     def test_numbered_and_other_show(self):
         e = app.create_event("Danza", "2027-03-02T19:00", "numerada", 1, 2, 3)
         self.assertEqual([x for x in app.list_events() if x["id"] == e][0]["capacity"],6)
