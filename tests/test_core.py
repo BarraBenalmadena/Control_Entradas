@@ -171,6 +171,27 @@ class ControlEntradasTests(unittest.TestCase):
         self.assertNotEqual(small.crop((300,140,790,238)).tobytes(),
                             large.crop((300,140,790,238)).tobytes())
 
+    def test_import_reference_word_art_without_sample_qr(self):
+        from modern_catalog import install_reference_docx, art_path
+        from unittest.mock import patch
+        from PIL import Image
+        from zipfile import ZipFile
+        import io, os, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            doc=Path(tmp)/"ocho_referencias.docx"
+            illustration=Image.new('RGB',(300,180),'#2865ab')
+            buf=io.BytesIO()
+            illustration.save(buf,format='PNG')
+            with ZipFile(doc,'w') as z:
+                for index in range(1,9):
+                    z.writestr(f"word/media/image{index}.png",buf.getvalue())
+            with patch.dict(os.environ,{"CONTROL_ENTRADAS_DATA":tmp}):
+                self.assertEqual(install_reference_docx(doc),8)
+                for index in range(1,31):
+                    self.assertTrue(art_path(index).is_file())
+                self.assertGreater(art_path(1).stat().st_size,100)
+
     def test_thirty_native_styles_and_unique_secure_qr_barcode(self):
         from modern_catalog import MODELS
         from unittest.mock import patch
