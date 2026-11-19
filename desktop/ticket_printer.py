@@ -291,8 +291,91 @@ def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -
                 sx=sx,usable=usable,stub=stub)
 
 
+
+def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
+                                design: dict, length_mm: int | None,
+                                *, color_preview: bool=False) -> Image.Image:
+    """Preserve the complete user-provided JPG ticket, not an old layout.
+
+    All printed sample QR/Code128/serial numbers are covered and replaced with
+    current signed ticket credentials; old sample codes cannot grant admission.
+    """
+    chosen=str(design['plantilla'])
+    source=catalog_asset(chosen)
+    g=geometry(width_mm,length_mm,design)
+    W,H=g['W'],g['H']
+    with Image.open(source) as original:
+        im=original.convert('RGB').resize((W,H),Image.Resampling.LANCZOS)
+    paint=ImageDraw.Draw(im)
+    rx=lambda a:round(a*W)
+    ry=lambda a:round(a*H)
+    def block(rect,fill='white',radius=0):
+        x0,y0,x1,y1=rect
+        paint.rounded_rectangle((rx(x0),ry(y0),rx(x1),ry(y1)),
+                                radius=max(0,round(radius*H)),fill=fill)
+    def textline(value,rect,points=28,fill='#071b38'):
+        x0,y0,x1,y1=rect
+        _center(paint,str(value),(rx(x0),ry(y0),rx(x1),ry(y1)),
+                max(11,round(points*H/576)),bold=True,lines=2,
+                min_size=max(9,round(14*H/576)),fill=fill)
+
+    # Number labels in original examples are not functional tickets.
+    block((.783,.148,.978,.285),radius=.014)
+    textline(f"N.º {int(ticket['number']):04d}",(.791,.160,.973,.270),31)
+
+    # Dedicated optical quiet zone and real freshly signed QR: no interpolation.
+    block((.783,.302,.980,.735))
+    qmax_w=rx(.972)-rx(.791)
+    qmax_h=ry(.703)-ry(.318)
+    qr=_qr_image(str(ticket['qr']),qmax_w,qmax_h)
+    im.paste(qr,((rx(.783)+rx(.979)-qr.width)//2,
+                 (ry(.305)+ry(.704)-qr.height)//2))
+    paint=ImageDraw.Draw(im)
+    textline('ESCANEAR QR',(.792,.724,.970,.792),19)
+
+    # Wide Code128, physically the same bearer ID as the original printer.
+    # No template JPG barcode is ever considered valid.
+    block((.205,.819,.762,.984))
+    maxw=rx(.748)-rx(.219)
+    barcode=_code128_image(barcode_ticket_value(ticket['id']),
+                           maxw,max(22,ry(.948)-ry(.848)))
+    im.paste(barcode,((rx(.205)+rx(.762)-barcode.width)//2,ry(.848)))
+    paint=ImageDraw.Draw(im)
+
+    date=datetime.fromisoformat(str(event['start_time']))
+    date_text=date.strftime('%d/%m/%Y')
+    time_text=date.strftime('%H:%M H')
+    title=str(event['name'])
+    place=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
+
+    # Exact default sample typography remains 1:1. For another function,
+    # update the live values, while keeping photograph/ornaments and frame.
+    if title.strip().upper()!='FESTIVAL DE NAVIDAD':
+        block((.230,.335,.765,.480))
+        textline(title,(.235,.340,.760,.477),38)
+    if date_text!='16/11/2026' or time_text!='19:00 H':
+        block((.265,.500,.760,.635))
+        textline(date_text+'  ·  '+time_text,(.270,.504,.757,.631),29)
+    if place.strip()!='Casa de la Cultura · Arroyo de la Miel':
+        block((.256,.642,.760,.740))
+        textline(place,(.260,.647,.755,.733),22)
+    if event.get('mode')!='libre':
+        block((.250,.736,.760,.828))
+        textline('RESPETE SU FILA Y BUTACA ASIGNADAS',
+                 (.250,.741,.760,.821),19)
+    if ticket.get('seat_label'):
+        block((.797,.790,.970,.842))
+        textline(ticket['seat_label'],(.797,.795,.970,.840),18)
+
+    if color_preview:
+        return im
+    # Printer is monochrome; keep native reference layout and exact code pixels.
+    return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
+
+
 def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
-                            design: dict | None = None, *, length_mm: int | None = None) -> Image.Image:
+                            design: dict | None = None, *, length_mm: int | None = None,
+                            color_preview: bool=False) -> Image.Image:
     """Render idéntico para PDF y RAW ESC/POS. QR preservado a píxeles nativos."""
     design = design or {}
     blanco = design.get('modo_impresion', 'Normal') == 'Blanco económico'
@@ -306,14 +389,8 @@ def render_landscape_ticket(event: dict, ticket: dict, width_mm: int = 80,
     y = lambda n: T+round(n*scale)
     chosen=str(design.get('plantilla') or '')
     if chosen in CATALOG_INDEX:
-        # Use reference photography/motif from the exact selected catalog tile,
-        # but recompute ALL event text, QR and Code128 from the live ticket.
-        _, asset_key, base_index = CATALOG_INDEX[chosen]
-        image=catalog_asset(chosen)
-        base_design=dict(design)
-        base_design['plantilla']=TEMPLATES[base_index]
-        base_design['poster']=str(image)
-        return render_landscape_ticket(event,ticket,width_mm,base_design,length_mm=length_mm)
+        return render_reference_jpg_ticket(event,ticket,width_mm,design,
+                                           length_mm,color_preview=color_preview)
     if chosen not in TEMPLATES:
         chosen = TEMPLATES[3] if design.get('poster_mode') == 'fondo' else TEMPLATES[0]
     kind=TEMPLATES.index(chosen)
@@ -819,7 +896,8 @@ def export_catalog_pdf(event: dict, ticket: dict, target: Path,
                                 f'Pagina {i//per_page+1} de {pages}')
         spec=dict(design)
         spec['plantilla']=template
-        im=render_landscape_ticket(event,ticket,width_mm,spec,length_mm=length_mm)
+        im=render_landscape_ticket(event,ticket,width_mm,spec,
+                                   length_mm=length_mm,color_preview=True)
         pdf.setFont('Helvetica-Bold',9)
         safe=template.encode('latin-1','replace').decode('latin-1')
         pdf.drawString(x+2,y+thumb_h+9,safe[:56])
