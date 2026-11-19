@@ -1015,7 +1015,8 @@ def launch_gui():
             try:
                 d=current_design(save=True)
                 ev,tkdata=get_ticket(event_id,numbers[0])
-                image=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),d,length_mm=ticket_length())
+                image=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),d,
+                                              length_mm=ticket_length(),color_preview=True)
                 popup=tk.Toplevel(win)
                 popup.title(f'{d["plantilla"]} · Entrada {numbers[0]:04d}')
                 popup.geometry('1150x715')
@@ -1108,7 +1109,8 @@ def launch_gui():
                 # Vista previa real del ticket, incluyendo QR y Code128 regenerados.
                 for i,template in enumerate(templates):
                     copy=dict(d);copy['plantilla']=template
-                    pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,length_mm=ticket_length())
+                    pic=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),copy,
+                                              length_mm=ticket_length(),color_preview=True)
                     art_w,art_h=470,248
                     pic.thumbnail((art_w,art_h),Image.Resampling.LANCZOS)
                     paper=Image.new('RGB',(484,264),'#ececec')
