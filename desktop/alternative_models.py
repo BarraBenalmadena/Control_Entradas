@@ -108,13 +108,13 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
 
     # Zonas independientes E/F/G/H: (información, fotografía, control)
     if index==0:
-        body=(239,808); photo_box=(810,13,1070,561); stub=(8,227)
+        body=(255,808); photo_box=(810,13,1070,561); stub=(5,249)
     elif index==1:
-        body=(17,611); photo_box=(618,13,839,560); stub=(845,1072)
+        body=(17,611); photo_box=(618,13,820,560); stub=(825,1075)
     elif index==2:
-        body=(227,831); photo_box=(11,13,218,560); stub=(841,1072)
+        body=(227,817); photo_box=(11,13,218,560); stub=(825,1075)
     else:
-        body=(16,613); photo_box=(620,13,837,560); stub=(844,1072)
+        body=(16,611); photo_box=(620,13,820,560); stub=(825,1075)
 
     # Foto: la misma seleccionada por el usuario, una sola vez y SIN reflejarla
     photo=_photo(tp,index,design)
@@ -134,7 +134,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     md=ImageDraw.Draw(mask)
     if index==0: # foto derecha, borde interior curvo
         at=[(X(x1)-bx0,0),(X(x1)-bx0,ph),
-             *[(X(836+24*math.sin(math.pi*y/576))-bx0,Y(y)-by0)
+             *[(X(834+24*math.sin(math.pi*y/576))-bx0,Y(y)-by0)
                for y in range(y1,y0-1,-4)]]
         md.polygon(at,fill=255)
     elif index==1: # foto redondeada, derecha central
@@ -144,12 +144,12 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
                     (round(pw*.34),ph),(0,ph)],fill=255)
     else: # foto central con borde ondulado
         at=[(pw,0),(pw,ph),*[
-            (X(638+27*math.sin(math.pi*y/576))-bx0,Y(y)-by0)
+            (X(640+27*math.sin(math.pi*y/576))-bx0,Y(y)-by0)
             for y in range(y1,y0-1,-4)]]
         md.polygon(at,fill=255)
     im.paste(cropped,(bx0,by0),mask)
     if index==0:
-        stroke([(836+24*math.sin(math.pi*y/576),y)
+        stroke([(834+24*math.sin(math.pi*y/576),y)
                 for y in range(13,561,4)],"#dda320",4)
     elif index==1:
         ImageDraw.Draw(im).rounded_rectangle(rect(*photo_box),
@@ -158,7 +158,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         stroke([(x1,y0),(x0+round((x1-x0)*.78),y0+(y1-y0)*.4),
                 (x0+round((x1-x0)*.34),y1)],GOLD,4)
     else:
-        stroke([(638+27*math.sin(math.pi*y/576),y)
+        stroke([(640+27*math.sin(math.pi*y/576),y)
                 for y in range(13,561,4)],"#47a4d8",4)
         smooth((body[0],138),(body[0]+250,123),(body[1]-10,133),
                "#8ed2f5",3)
@@ -265,9 +265,9 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     # Control separado, a la izquierda E; a la derecha F/G/H.
     S,T=stub
     if index==0:
-        stroke([(232,16),(232,560)],accent,3)
+        stroke([(251,16),(251,560)],accent,3)
     else:
-        stroke([(838,16),(838,559)],accent,3)
+        stroke([(821,16),(821,559)],accent,3)
     d=ImageDraw.Draw(im)
     d.rounded_rectangle(rect(S+7,26,T-7,84),
         radius=max(1,Y(10)),fill=accent)
@@ -276,15 +276,12 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         radius=max(1,Y(9)),outline=accent,width=max(1,Y(2)))
     txt(f"N.º {int(ticket['number']):04d}",
         (S+22,108,T-21,151),29,NAVY,1,13)
-    qr_area=rect(S+10,173,T-10,396)
-    qr=tp._qr_image(str(ticket["qr"]),
-           qr_area[2]-qr_area[0],qr_area[3]-qr_area[1])
-    im.paste(qr,(qr_area[0]+(qr_area[2]-qr_area[0]-qr.width)//2,
-                 qr_area[1]+(qr_area[3]-qr_area[1]-qr.height)//2))
-    txt("ESCANEAR QR",(S+9,405,T-9,448),21,accent,1,11)
-    stroke([(S+18,455),(T-18,455)],accent,2)
+    qr_area=rect(S+6,164,T-6,448)
+    tp.draw_standard_access_qr(im,str(ticket["qr"]),qr_area)
+    txt("ESCANEAR QR",(S+9,451,T-9,478),20,accent,1,10)
+    stroke([(S+18,483),(T-18,483)],accent,2)
     txt(str(ticket.get("seat_label") or "").strip() or "1 PERSONA",
-        (S+10,473,T-9,534),32,accent,2,13)
+        (S+10,490,T-9,548),32,accent,2,12)
     if index==3:
         smooth((L+4,554),((L+R)/2,534),(R-7,557),"#94d3f8",3)
     d.rounded_rectangle(rect(5,5,1075,571),radius=max(2,Y(14)),
