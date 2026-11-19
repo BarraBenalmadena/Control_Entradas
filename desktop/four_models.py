@@ -269,12 +269,12 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     if short_council:
         paint_logo(council,(header_start,18,header_start+70,129))
         name_left=header_start+76
-        name_right=616 if school is not None else 829
+        name_right=616 if school is not None else 820
         if school is not None:
-            paint_logo(school,(624,25,828,107))
+            paint_logo(school,(624,25,820,107))
     elif council is not None:
         # JPG municipal panorámico completo: zona superior derecha independiente.
-        paint_logo(council,(569,22,833,121))
+        paint_logo(council,(569,22,820,121))
         if school is not None:
             paint_logo(school,(header_start,31,header_start+70,105))
             name_left=header_start+77
@@ -284,7 +284,7 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     elif school is not None:
         paint_logo(school,(header_start,22,header_start+85,119))
         name_left=header_start+93
-        name_right=829
+        name_right=820
     else:
         name_left=header_start+5
         name_right=829
@@ -303,7 +303,7 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
 
     # Título del evento con cuatro geometrías realmente distintas.
     body_start=(266,259,294,265)[variant]
-    body_right=832
+    body_right=819
     event_name=str(event.get("name") or "ESPECTÁCULO")
     d=ImageDraw.Draw(art)
     if variant==0:
@@ -392,11 +392,11 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     art.paste(barcode,(barcode_x,Y(bar_top)))
 
     # Franja de acceso exclusiva: nunca puede quedar cubierta por cartel/logos.
-    stub_left=850
-    stub_right=1071
+    stub_left=830
+    stub_right=1075
     d=ImageDraw.Draw(art)
     d.rectangle(box((stub_left,12,stub_right,562)),fill="white")
-    draw_rule([(841,18),(841,557)],accent,3)
+    draw_rule([(826,18),(826,557)],accent,3)
     d.rounded_rectangle(box((stub_left+6,26,stub_right-6,84)),
         radius=max(1,Y(9)),fill=accent)
     fit_text("CONTROL DE ACCESO",
@@ -406,22 +406,18 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
         width=max(1,Y(2)),fill="white")
     fit_text(f"N.º {int(ticket['number']):04d}",
              (stub_left+20,110,stub_right-18,150),31,NAVY,1,14)
-    qr_region=box((stub_left+10,174,stub_right-8,397))
-    qr=tp._qr_image(str(ticket["qr"]),
-                    qr_region[2]-qr_region[0],
-                    qr_region[3]-qr_region[1])
-    art.paste(qr,(qr_region[0]+(qr_region[2]-qr_region[0]-qr.width)//2,
-                  qr_region[1]+(qr_region[3]-qr_region[1]-qr.height)//2))
-    fit_text("ESCANEAR QR",(stub_left+10,409,stub_right-8,447),
-             23,accent,1,12)
-    draw_rule([(stub_left+18,452),(stub_right-17,452)],accent,2)
+    qr_region=box((stub_left+6,164,stub_right-6,448))
+    tp.draw_standard_access_qr(art,str(ticket["qr"]),qr_region)
+    fit_text("ESCANEAR QR",(stub_left+10,451,stub_right-8,478),
+             22,accent,1,11)
+    draw_rule([(stub_left+18,482),(stub_right-17,482)],accent,2)
     label=str(ticket.get("seat_label") or "").strip() or "1 PERSONA"
-    fit_text(label,(stub_left+6,475,stub_right-5,538),
-             35,accent,2,13)
+    fit_text(label,(stub_left+6,488,stub_right-5,548),
+             33,accent,2,13)
     if variant==3:
         # Onda azul en la esquina inferior, sin tocar barra ni QR.
         curve([(15,553),(98,531),(245,563)],"#91d8f7",4)
-        curve([(854,554),(976,527),(1063,557)],"#a5e1f9",3)
+        # La decoración no invade el talón del QR ni el texto de acceso.
 
     # Perfil de ticket, nunca recuadro de lotería dentro de la fotografía.
     d=ImageDraw.Draw(art)
