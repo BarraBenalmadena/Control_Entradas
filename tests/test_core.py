@@ -228,6 +228,44 @@ class ControlEntradasTests(unittest.TestCase):
                          'poster':str(Path(tmp)/'no_existe.jpg')},
                         color_preview=True)
 
+    def test_four_ticket_models_color_mono_upload_and_codes(self):
+        from four_models import MODELS as FOUR
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        self.assertEqual(len(FOUR),4)
+        eid=app.create_event('Festival de Navidad','2027-12-16T19:00','libre',2)
+        event,first=app.get_ticket(eid,1)
+        _,second=app.get_ticket(eid,2)
+        with TemporaryDirectory() as folder:
+            red=Path(folder)/'cartel_original.jpg'
+            Image.new('RGB',(540,820),(243,24,34)).save(red)
+            for model in FOUR:
+                spec={'plantilla':model,'poster':str(red)}
+                preview=ticket_printer.render_landscape_ticket(
+                    event,first,80,spec,color_preview=True)
+                self.assertEqual(preview.size,(1080,576))
+                self.assertGreater(preview.getpixel((45,235))[0],190)
+                printed=ticket_printer.render_landscape_ticket(
+                    event,first,80,spec,color_preview=False)
+                self.assertEqual(printed.size,(1080,576))
+                px=printed.getpixel((40,235))
+                self.assertEqual(px[0],px[1])
+                self.assertEqual(px[1],px[2])
+                other=ticket_printer.render_landscape_ticket(
+                    event,second,80,spec,color_preview=True)
+                self.assertNotEqual(preview.crop((820,170,1045,405)).tobytes(),
+                                    other.crop((820,170,1045,405)).tobytes())
+                with self.assertRaises(FileNotFoundError):
+                    ticket_printer.render_landscape_ticket(
+                        event,first,80,{'plantilla':model,
+                        'poster':str(Path(folder)/'missing.jpg')})
+            out=Path(folder)/'cuatro_modelos_A4.pdf'
+            ticket_printer.export_catalog_pdf(
+                event,first,out,{'poster':str(red)},templates=FOUR,
+                width_mm=80,length_mm=135)
+            self.assertTrue(out.read_bytes().startswith(b'%PDF-'))
+
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
         from unittest.mock import patch
