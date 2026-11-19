@@ -228,6 +228,49 @@ class ControlEntradasTests(unittest.TestCase):
                          'poster':str(Path(tmp)/'no_existe.jpg')},
                         color_preview=True)
 
+    def test_four_models_never_substitute_or_crop_uploaded_municipal_logo(self):
+        from four_models import MODELS as FOUR
+        from PIL import Image,ImageDraw
+        from tempfile import TemporaryDirectory
+        eid=app.create_event('Concierto municipal',
+                 '2027-12-16T19:00','libre',1)
+        event,ticket=app.get_ticket(eid,1)
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)
+            poster=source/'foto.jpg'
+            short=source/'escudo_usuario.jpg'
+            wide=source/'logo_municipal_horizontal.jpg'
+            Image.new('RGB',(400,800),'#ef2040').save(poster)
+            Image.new('RGB',(220,360),'#13e03d').save(short)
+            Image.new('RGB',(800,170),'#2642ed').save(wide)
+            for name in FOUR:
+                base={'plantilla':name,'poster':str(poster)}
+                no_logo=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,base,length_mm=165,color_preview=True)
+                with_short=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,{**base,'logo_ayto':str(short)},
+                    length_mm=165,color_preview=True)
+                with_wide=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,{**base,'logo_ayto':str(wide)},
+                    length_mm=165,color_preview=True)
+                self.assertEqual(no_logo.size,(1320,576))
+                # JPG corto ocupa encabezado izquierdo; el panorámico completo,
+                # su banda reservada, sin inventar un escudo adicional.
+                short_header=with_short.crop((300,12,520,145))
+                wide_header=with_wide.crop((720,15,1020,144))
+                self.assertTrue(any(g>175 and g>r*2 and g>b*2
+                    for r,g,b in short_header.getdata()),name)
+                self.assertTrue(any(b>170 and b>g*2 and b>r*2
+                    for r,g,b in wide_header.getdata()),name)
+                self.assertNotEqual(no_logo.crop((300,12,520,145)).tobytes(),
+                                    with_short.crop((300,12,520,145)).tobytes())
+                # Se debe ver el cartel como una sola foto, no otra miniatura.
+                cover=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,{**base,'ajuste_imagen':'Mostrar completa'},
+                    length_mm=165,color_preview=True)
+                self.assertEqual(cover.crop((25,150,120,500)).tobytes(),
+                                 no_logo.crop((25,150,120,500)).tobytes())
+
     def test_four_ticket_models_color_mono_upload_and_codes(self):
         from four_models import MODELS as FOUR
         from PIL import Image
