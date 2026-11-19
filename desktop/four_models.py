@@ -280,7 +280,10 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
             name_right=820
     elif council is not None:
         # La variante horizontal usa toda su imagen, sin recorte del escudo.
-        wide_width=min(264,round(225*logo_pct/135))
+        # Si además hay un segundo logo, no reducir el nombre a un
+        # bloque minúsculo ni fallar: se limita la anchura disponible.
+        max_wide=(820-(header_start+78)-174) if school is not None else 264
+        wide_width=min(max_wide,round(225*logo_pct/135))
         paint_logo(council,(820-wide_width,8,820,135))
         if school is not None:
             paint_logo(school,(header_start,18,header_start+72,124))
