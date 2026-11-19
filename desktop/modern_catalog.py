@@ -272,6 +272,15 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         except (OSError,ValueError):
             return None
     ayto=open_logo(design.get('logo_ayto'))
+    if ayto is None:
+        # El EXE distribuido puede llevar ya el escudo auténtico del Word.
+        # Usarlo por defecto no modifica otros diseños ni los datos guardados.
+        for base in (Path(os.environ.get('CONTROL_ENTRADAS_DATA') or
+                          Path.home()/'Documents'/'ControlEntradas'),
+                     Path(sys.executable).resolve().parent,
+                     Path(__file__).resolve().parent):
+            ayto=open_logo(base/'catalogo_nuevo'/'escudo_benalmadena.png')
+            if ayto is not None:break
     centro=open_logo(design.get('logo_centro'))
     def draw_logo(source,coords):
         # Crop excess transparent/pale margins before fitting a horizontal
