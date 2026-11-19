@@ -1121,6 +1121,85 @@ def list_windows_printers() -> list[str]:
         return []
 
 
+def office_printers() -> list[str]:
+    """Impresoras Windows aptas para A4, sin escoger la térmica por accidente."""
+    names=list_windows_printers()
+    thermal=('zywell','pos-','pos_','ticket','thermal','receipt')
+    return [name for name in names if not any(k in name.lower() for k in thermal)]
+
+
+def _fit_page_in_printer(page_w: float, page_h: float, printable_w: int,
+                         printable_h: int) -> tuple[int,int,int,int]:
+    """Rectángulo GDI sin recorte, con margen de seguridad de un 2%."""
+    if min(page_w,page_h,printable_w,printable_h)<=0:
+        raise ValueError('El tamaño de la página o de la impresora no es válido.')
+    factor=min(printable_w*.96/page_w,printable_h*.96/page_h)
+    w=max(1,round(page_w*factor))
+    h=max(1,round(page_h*factor))
+    x=(printable_w-w)//2
+    y=(printable_h-h)//2
+    return (x,y,x+w,y+h)
+
+
+def print_pdf_windows(path: Path, printer_name: str) -> tuple[int,int]:
+    """Imprime A4 realmente mediante el driver gráfico de Windows (GDI).
+
+    Evita el fallo del flujo antiguo: abrir el PDF no enviaba trabajo alguno.
+    No transmite comandos ESC/POS RAW a una impresora de oficina.
+    Devuelve (trabajo de Windows, páginas enviadas), no confirma salida física.
+    """
+    from PIL import ImageWin
+    try:
+        import fitz
+        import win32ui, win32con
+    except ImportError as exc:
+        raise RuntimeError('Falta PyMuPDF o pywin32 para imprimir en Windows.') from exc
+    if printer_name not in office_printers():
+        raise ValueError('Selecciona una impresora normal instalada en Windows, no la ZYWELL.')
+    target=Path(path)
+    if not target.is_file():
+        raise FileNotFoundError(f'No existe el PDF para imprimir: {target}')
+    document=fitz.open(str(target))
+    if not document.page_count:
+        document.close()
+        raise ValueError('El PDF no contiene páginas.')
+    dc=win32ui.CreateDC()
+    started=False
+    pages=0
+    try:
+        dc.CreatePrinterDC(printer_name)
+        width=dc.GetDeviceCaps(win32con.HORZRES)
+        height=dc.GetDeviceCaps(win32con.VERTRES)
+        if min(width,height)<100:
+            raise RuntimeError('El controlador no informa del área imprimible de papel.')
+        job=dc.StartDoc('Control de Entradas - A4')
+        started=True
+        for page in document:
+            # Renderiza a 144 dpi para que letras, escudos y QR salgan nítidos.
+            pix=page.get_pixmap(matrix=fitz.Matrix(2,2),
+                                colorspace=fitz.csRGB,alpha=False)
+            im=Image.frombytes('RGB',(pix.width,pix.height),pix.samples)
+            destination=_fit_page_in_printer(page.rect.width,page.rect.height,
+                                             width,height)
+            dc.StartPage()
+            try:
+                ImageWin.Dib(im).draw(dc.GetHandleOutput(),destination)
+            finally:
+                dc.EndPage()
+            pages+=1
+        dc.EndDoc()
+        started=False
+        return job,pages
+    except Exception:
+        if started:
+            try: dc.AbortDoc()
+            except Exception: pass
+        raise
+    finally:
+        dc.DeleteDC()
+        document.close()
+
+
 CUT_MODES=('Manual (avance ajustable)', 'Automático genérico (GS V 65)', 'ZYWELL compatible (GS V 66)')
 
 
