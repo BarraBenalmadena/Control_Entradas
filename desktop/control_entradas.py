@@ -951,6 +951,16 @@ def launch_gui():
                         filetypes=[('Imágenes','*.jpg *.jpeg *.png *.bmp *.webp')])
                     if selected: variables[k].set(selected)
                 ttk.Button(art,text='Elegir imagen...',command=pick_image).grid(row=row,column=2,padx=5)
+                if key=='logo_ayto':
+                    def use_education_logo():
+                        locations=(Path(sys.executable).resolve().parent/'logos'/'logo-educacion-azul.png',
+                                   Path(__file__).resolve().parent/'logos'/'logo-educacion-azul.png')
+                        p=next((v for v in locations if v.is_file()),None)
+                        if p is None:
+                            messagebox.showwarning('Logo', 'No se encuentra la carpeta logos del ZIP completo.',parent=win)
+                        else:variables['logo_ayto'].set(str(p))
+                    ttk.Button(art,text='Logo Educación azul',
+                               command=use_education_logo).grid(row=row,column=3,padx=4)
         art.columnconfigure(1,weight=1)
         ttk.Label(designer_body,text='Izquierda y derecha son los extremos LARGOS del ticket horizontal (antes y después del corte). '
                                     'El máximo permitido es 18 mm por lado. Superior e inferior ajustan el ancho imprimible. '
@@ -1265,6 +1275,13 @@ def launch_gui():
         ttk.Button(actions,text='PDF individual',command=pdf_single).pack(side='left',padx=3)
         ttk.Button(actions,text='CALIBRAR ZYWELL',command=calibration_test).pack(side='left',padx=3)
         ttk.Button(actions,text='Cortar sin imprimir',command=cutter_test).pack(side='left',padx=3)
+        def one_test_ticket():
+            # Prints ONE genuine existing ticket with its own ID and QR.
+            # This is not a dummy; the operator must export the signed JSON.
+            qty.set('1')
+            print_batch()
+        ttk.Button(actions,text='IMPRIMIR 1 PRUEBA (REAL)',
+                   command=one_test_ticket).pack(side='left',padx=4)
         print_button=ttk.Button(actions,text='IMPRIMIR LOTE',command=print_batch,style='Action.TButton')
         print_button.pack(side='right',padx=3)
         ttk.Label(outer,text='Primero calibra con la tira de prueba. Usa el modo ZYWELL compatible; si no corta, necesitamos el modelo exacto.',foreground='#7a4630').pack(anchor='w',pady=8)
