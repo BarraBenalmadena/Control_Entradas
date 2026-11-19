@@ -403,6 +403,53 @@ class ControlEntradasTests(unittest.TestCase):
                 self.assertEqual(doc.page_count,3)
                 self.assertGreater(doc[0].rect.width,doc[0].rect.height)
 
+    def test_identical_maximum_qr_across_twelve_styles_and_thermal_lengths(self):
+        """Matriz intacta, igual tamaño en A-L y máxima escala real por formato."""
+        from four_models import MODELS as ALL
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        self.assertEqual(len(ALL),12)
+        eid=app.create_event('Verificación QR uniforme',
+            '2027-12-20T20:00','libre',1)
+        event,ticket=app.get_ticket(eid,1)
+        with TemporaryDirectory() as folder:
+            jpg=Path(folder)/'cartel.jpg'
+            Image.new('RGB',(430,790),'#b5224b').save(jpg)
+            for paper,length in ((80,165),(80,135),(58,135)):
+                sizes=set()
+                for i,model in enumerate(ALL):
+                    spec={'plantilla':model,'poster':str(jpg)}
+                    picture=ticket_printer.render_landscape_ticket(
+                        event,ticket,paper,spec,length_mm=length,
+                        color_preview=True)
+                    W,H=picture.size
+                    if i<4:
+                        left,right=830,1075
+                    elif i==4:
+                        left,right=5,249
+                    else:
+                        left,right=825,1075
+                    x0=round((left+6)*W/1080)
+                    x1=round((right-6)*W/1080)
+                    y0=round(164*H/576)
+                    y1=round(448*H/576)
+                    qr=ticket_printer._qr_image(
+                        str(ticket['qr']),
+                        min(x1-x0,round(230*W/1080)),
+                        min(y1-y0,round(284*H/576)))
+                    sizes.add(qr.size)
+                    xx=x0+(x1-x0-qr.width)//2
+                    yy=y0+(y1-y0-qr.height)//2
+                    cropped=picture.crop((xx,yy,xx+qr.width,yy+qr.height))
+                    self.assertEqual(cropped.tobytes(),qr.tobytes(),
+                                     f'QR invadido o modificado: {paper}, {length}, {model}')
+                self.assertEqual(len(sizes),1,
+                       f'Inconsistencia de tamaño QR entre plantillas: {paper}x{length}')
+                self.assertGreaterEqual(next(iter(sizes))[0],130)
+                if paper==80 and length==165:
+                    self.assertGreaterEqual(next(iter(sizes))[0],260,
+                       'QR de 80 mm x 165 mm debería imprimir a 4 puntos/módulo')
+
     def test_import_reference_word_art_without_sample_qr(self):
         from modern_catalog import install_reference_docx, art_path
         from unittest.mock import patch
