@@ -17,7 +17,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.graphics.barcode.code128 import Code128
 from reportlab.lib.units import mm
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from catalog_models import CATALOG_NAMES, CATALOG_INDEX, catalog_asset
 from modern_catalog import MODELS as MODERN_MODELS, INDEX as MODERN_INDEX, render as render_modern
 from four_models import MODELS as FOUR_MODELS, INDEX as FOUR_INDEX, render as render_four
@@ -1059,8 +1059,11 @@ def export_catalog_pdf(event: dict, ticket: dict, target: Path,
         raise ValueError('Selecciona al menos un diseño del catálogo.')
     dest=Path(target)
     dest.parent.mkdir(parents=True,exist_ok=True)
-    pdf=Canvas(str(dest),pagesize=A4)
-    page_w,page_h=A4
+    # Con los 4 modelos aprobados, A4 apaisado aprovecha el ancho y
+    # muestra las dos columnas de entradas mucho más grandes.
+    page_size=landscape(A4) if all(t in FOUR_INDEX for t in templates) else A4
+    pdf=Canvas(str(dest),pagesize=page_size)
+    page_w,page_h=page_size
     columns=2
     card_w=(page_w-64)/columns
     thumb_w=card_w-14
