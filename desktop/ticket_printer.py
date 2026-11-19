@@ -295,123 +295,216 @@ def geometry(width_mm: int, length_mm: int | None, design: dict | None = None) -
 def render_reference_jpg_ticket(event: dict, ticket: dict, width_mm: int,
                                 design: dict, length_mm: int | None,
                                 *, color_preview: bool=False) -> Image.Image:
-    """Image-based catalog, with clean independent LIVE fields.
+    """Editable layers over the ORIGINAL complete user's ticket photograph.
 
-    A reference JPG is a flattened picture, not an editable file. Keep its
-    decoration and photography; replace the entire barcode/QR/number areas
-    rather than drawing little boxes on top of old printed sample codes.
+    Only the field footprints are renewed. Source poster, borders, artwork,
+    diagonal shapes, crests, decorative symbols and colored background remain.
+    No stale sample QR/Code128 survives in any ticket.
     """
-    source=catalog_asset(str(design['plantilla']))
+    from catalog_models import CATALOG_INDEX, catalog_asset
+    key=CATALOG_INDEX[str(design['plantilla'])][1]
+    path=catalog_asset(str(design['plantilla']))
     g=geometry(width_mm,length_mm,design)
     W,H=g['W'],g['H']
-    with Image.open(source) as src:
-        im=src.convert('RGB').resize((W,H),Image.Resampling.LANCZOS)
+    with Image.open(path) as raw:
+        original=raw.convert('RGB')
+    SW,SH=original.size
+    im=original.resize((W,H),Image.Resampling.LANCZOS)
+    px=lambda n:round(float(n)*W/SW)
+    py=lambda n:round(float(n)*H/SH)
+    artist=ImageDraw.Draw(im)
 
-    rx=lambda f:round(f*W)
-    ry=lambda f:round(f*H)
-    paint=ImageDraw.Draw(im)
-    def rectangle(coords,fill='white',outline=None,width=1):
-        box=(rx(coords[0]),ry(coords[1]),rx(coords[2]),ry(coords[3]))
-        paint.rectangle(box,fill=fill,outline=outline,width=width)
-    def title(value,coords,size=34,fg='#09264c',lines=2):
-        box=(rx(coords[0]),ry(coords[1]),rx(coords[2]),ry(coords[3]))
-        _center(paint,str(value),box,max(12,round(size*H/576)),
-                bold=True,lines=lines,min_size=max(10,round(14*H/576)),fill=fg)
+    # The coordinates are measured against the actual JPG originals (372px
+    # wide). Municipal designs have an independent 166px-high layout.
+    is_municipal=key.startswith('municipal_')
+    title_box=(95,47,289,69)
+    date_box=(116,69,196,88)
+    time_box=(224,69,290,88)
+    place_box=(115,89,286,108)
+    note_a=(111,110,282,124)
+    note_b=(111,124,282,138)
+    barcode_box=(105,139,282,SH-1)
+    profiles={
+        'municipal_01':((94,50,291,79),(107,80,199,104),(224,80,287,104),
+                        (108,105,285,126),(105,126,282,140),(105,140,282,149),(107,150,274,SH-1)),
+        'municipal_02':((108,52,280,114),(117,115,200,140),(225,115,287,140),
+                        (109,140,279,152),None,None,(111,153,280,SH-1)),
+        'municipal_03':((113,54,285,110),(117,111,206,131),(228,111,286,131),
+                        (113,131,287,151),None,None,(111,151,282,SH-1)),
+        'municipal_05':((70,53,288,92),(99,93,204,121),(226,93,286,121),
+                        (97,123,283,147),None,None,(103,148,275,SH-1)),
+        'municipal_06':((96,56,285,84),(114,84,206,109),(233,84,287,109),
+                        (110,110,284,127),(109,127,282,138),(109,138,282,149),(115,150,279,SH-1)),
+        'municipal_07':((101,58,287,90),(117,90,205,118),(228,90,286,118),
+                        (112,118,287,142),None,None,(109,143,279,SH-1)),
+        'municipal_09':((102,54,291,84),(113,84,207,110),(225,84,285,110),
+                        (111,110,286,128),(107,129,284,139),(107,139,284,149),(112,150,279,SH-1)),
+        'municipal_11':((115,52,287,108),(118,108,210,130),(232,108,286,130),
+                        (113,131,287,148),None,None,(113,149,282,SH-1)),
+        'municipal_19':((89,56,285,84),(112,84,204,113),(230,84,285,113),
+                        (109,114,287,137),None,None,(112,140,283,SH-1)),
+    }
+    if is_municipal:
+        (title_box,date_box,time_box,place_box,
+         note_a,note_b,barcode_box)=profiles[key]
 
-    # When the designer supplies a poster JPG/PNG, display it INSIDE the
-    # template's photograph panel, not as an ignored preference.
-    poster=_open_image(design.get('poster'))
-    if poster is not None:
-        region=(rx(.018),ry(.045),rx(.275),ry(.955))
-        fitted=ImageOps.fit(poster.convert('RGB'),
-                            (region[2]-region[0],region[3]-region[1]),
-                            method=Image.Resampling.LANCZOS,centering=(.5,.5))
-        mask=Image.new('L',im.size,0)
-        mask_draw=ImageDraw.Draw(mask)
-        # Most supplied references have the art/photo to the left of a
-        # diagonal/curved boundary. Limit the new poster to that region.
-        mask_draw.polygon([(rx(.022),ry(.045)),(rx(.261),ry(.045)),
-                           (rx(.222),ry(.950)),(rx(.022),ry(.950))],fill=255)
-        poster_layer=Image.new('RGB',im.size,'white')
-        poster_layer.paste(fitted,region[:2])
-        im.paste(poster_layer,(0,0),mask)
-        paint=ImageDraw.Draw(im)
+    accents={
+        'music6_08':'#9c1931','music6_11':'#152b5e',
+        'music6_12':'#a01c61','music6_17':'#0b2754',
+        'music6_18':'#55246d','music6_20':'#91570e',
+        'music5_01':'#8a0d24','music5_02':'#a20c28',
+        'music5_03':'#f7d97b','music5_04':'#12365e',
+        'music5_05':'#89511c','music5_06':'#8a164c',
+        'music5_09':'#76265f','music5_11':'#132d5c',
+        'music5_16':'#aa541b','music5_18':'#782070',
+        'municipal_01':'#b61820','municipal_02':'#fff9f3',
+        'municipal_03':'#122c59','municipal_05':'#ffffff',
+        'municipal_06':'#b31b25','municipal_07':'#64207f',
+        'municipal_09':'#a01f26','municipal_11':'#192f60',
+        'municipal_19':'#fff4d8',
+    }
+    ink=accents.get(key,'#102746')
 
-    number=int(ticket['number'])
+    def clean(box, *, background=None):
+        """Fill only editable glyph area with local background, not art."""
+        if box is None:return
+        x0,y0,x1,y1=box
+        rect=(px(x0),py(y0),px(x1),py(y1))
+        if background is None:
+            # Sample four blank pixels just INSIDE the original text panel.
+            # Colored red/navy templates keep their original color.
+            samples=[]
+            for x,y in ((x0+2,y0+2),(x1-2,y0+2),
+                        (x0+2,y1-2),(x1-2,y1-2)):
+                samples.append(original.getpixel(
+                    (min(SW-1,max(0,int(x))),min(SH-1,max(0,int(y))))))
+            import statistics
+            background=tuple(int(statistics.median(v[c] for v in samples))
+                             for c in range(3))
+            if min(background)>242:background=(255,255,255)
+        artist.rectangle(rect,fill=background)
+        return background
+
+    def letters(value,box,*,size=13,color=None,lines=2):
+        if box is None:return
+        x0,y0,x1,y1=box
+        target=(px(x0),py(y0),px(x1),py(y1))
+        _center(artist,str(value),target,
+                max(9,round(size*H/SH)),bold=True,
+                lines=lines,min_size=max(8,round(6*H/SH)),
+                fill=color or ink)
+
+    # The user-supplied jpg is ONLY the poster/photo. Restrict it to the
+    # left photographic region so it cannot touch original typography/QR.
+    supplied=_open_image(design.get('poster'))
+    if supplied is not None:
+        art_right=(60 if key=='municipal_02' else
+                   76 if key=='municipal_05' else
+                   102 if key=='municipal_09' else 94)
+        rw=max(1,px(art_right))
+        art=ImageOps.fit(supplied.convert('RGB'),(rw,H),
+                          method=Image.Resampling.LANCZOS)
+        mask=Image.new('L',(W,H),0)
+        md=ImageDraw.Draw(mask)
+        right=px(art_right)
+        md.polygon([(0,0),(right,0),(right,py(SH*.24)),
+                    (int(right*.89),py(SH*.67)),
+                    (int(right*.72),H-2),(0,H-2)],fill=255)
+        layer=Image.new('RGB',(W,H),'white')
+        layer.paste(art,(0,0))
+        im.paste(layer,(0,0),mask)
+        artist=ImageDraw.Draw(im)
+
     date=datetime.fromisoformat(str(event['start_time']))
-    day=date.strftime('%d/%m/%Y')
-    when=date.strftime('%H:%M H')
-    event_title=str(event['name']).strip()
-    place=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel').strip()
-    header=str(design.get('cabecera') or 'Escuela Municipal de Música y Danza').strip()
-    subheader=str(design.get('subtitulo') or 'Arroyo de la Miel').strip()
-    accent='#0d2448'
+    name=str(event['name'])
+    date_str=date.strftime('%d/%m/%Y')
+    time_str=date.strftime('%H:%M H')
+    venue=str(design.get('lugar') or 'Casa de la Cultura · Arroyo de la Miel')
+    no_seats=(event.get('mode')=='libre')
 
-    # Source JPGs contain DEMONSTRATION lettering. They cannot be edited
-    # letter by letter: if event fields differ from the sample, replace the
-    # complete information panel, leaving art and ticket border visible.
-    sample_event=(event_title.upper()=='FESTIVAL DE NAVIDAD'
-                  and day=='16/11/2026' and when=='19:00 H'
-                  and place=='Casa de la Cultura · Arroyo de la Miel'
-                  and event.get('mode')=='libre')
-    if not sample_event:
-        rectangle((.283,.292,.777,.828),'white')
-        paint.rounded_rectangle((rx(.297),ry(.305),rx(.765),ry(.811)),
-                 radius=max(3,round(.018*H)),
-                 fill='white',outline='#a7b1c0',width=max(1,H//320))
-        title(event_title,(.307,.318,.751,.464),40,accent)
-        title(day+'     '+when,(.305,.478,.751,.570),27,accent)
-        title(place,(.305,.580,.750,.655),23,accent)
-        if event.get('mode')=='libre':
-            notes=['SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA',
-                   'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA']
-        else:
-            notes=['RESPETE SU FILA Y BUTACA ASIGNADAS',
-                   'SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA']
-        title(notes[0],(.301,.668,.751,.730),16,accent)
-        title(notes[1],(.301,.733,.751,.798),15,accent)
+    # Every user-editable field is REDRAWN even if it happens to equal the
+    # photograph's example data. There are no baked-in sample captions.
+    for box in (title_box,date_box,time_box,place_box,note_a,note_b):
+        clean(box)
+    letters(name,title_box,size=16 if not is_municipal else 15,
+            color=ink,lines=2)
+    letters(date_str,date_box,size=11,lines=1)
+    letters(time_str,time_box,size=11,lines=1)
+    # Use contrasting white glyphs on the existing navy/red place ribbon.
+    place_color='white' if key in ('municipal_01','municipal_02',
+                                  'municipal_05','music5_03') else ink
+    letters(venue,place_box,size=8,color=place_color,lines=2)
+    if note_a:
+        msg=('SIN RESERVA DE ASIENTOS · ACCESO POR ORDEN DE LLEGADA'
+             if no_seats else 'RESPETE SU FILA Y BUTACA ASIGNADAS')
+        letters(msg,note_a,size=7,color='#12233c',lines=1)
+    if note_b:
+        letters('SE RECOMIENDA PUNTUALIDAD · INICIADA LA FUNCIÓN NO SE GARANTIZA BUTACA',
+                note_b,size=6.5,color='#12233c',lines=2)
+
+    # Header is preserved exactly unless its text was edited.
+    header=str(design.get('cabecera') or 'Escuela Municipal de Música y Danza')
+    subtitle=str(design.get('subtitulo') or 'Arroyo de la Miel')
     if (header!='Escuela Municipal de Música y Danza'
-            or subheader!='Arroyo de la Miel'):
-        rectangle((.309,.05,.773,.27),'white')
-        title(header,(.320,.060,.766,.172),29,accent)
-        title(subheader,(.320,.173,.764,.253),20,accent)
+            or subtitle!='Arroyo de la Miel'):
+        header_box=(158,5,286,39) if not is_municipal else (151,4,285,46)
+        clean(header_box,background='white' if key not in
+              ('municipal_02','municipal_05','municipal_19') else
+              ((120,16,25) if key=='municipal_02' else (12,35,74)))
+        text_color='white' if key in ('municipal_02','municipal_05','municipal_19') else '#112a4a'
+        letters(header,(header_box[0],header_box[1],header_box[2],header_box[3]-11),
+                size=12,color=text_color)
+        letters(subtitle,(header_box[0],header_box[3]-13,header_box[2],header_box[3]),
+                size=8,color=text_color)
+    crest=_open_image(design.get('logo_ayto'))
+    if crest is not None:
+        cx=(64,5,101,47) if key=='municipal_02' else (109,2,150,43)
+        clean(cx,background='white' if key!='municipal_02' else (115,16,20))
+        _fitted(im,crest,(px(cx[0]),py(cx[1]),px(cx[2]),py(cx[3])),
+                'Mostrar completa')
+    secondary=_open_image(design.get('logo_centro'))
+    if secondary is not None:
+        cx=(265,4,294,37)
+        clean(cx,background='white')
+        _fitted(im,secondary,(px(cx[0]),py(cx[1]),px(cx[2]),py(cx[3])),
+                'Mostrar completa')
 
-    # IMPORTANT: remove the WHOLE demonstration right-hand strip, including
-    # pre-printed false QR, captions, border and N.º 0001, before rendering
-    # real ticket credentials. This prevents the double-code screenshot issue.
-    rectangle((.784,.030,.979,.972),'white')
-    paint.rounded_rectangle((rx(.798),ry(.053),rx(.965),ry(.148)),
-                            radius=max(4,ry(.014)),fill='#132d53')
-    title('CONTROL DE ACCESO',(.800,.065,.963,.140),22,'white')
-    paint.rounded_rectangle((rx(.800),ry(.166),rx(.963),ry(.281)),
-                            radius=max(4,ry(.012)),outline='#8294aa',
-                            width=max(1,H//240),fill='#f9fafb')
-    title(f"N.º {number:04d}",(.805,.173,.959,.272),29,accent)
-
-    # The QR and Code128 are generated from CURRENT signed data, not from
-    # the user's static reference photograph. Never scale after encoding.
-    qr_box=(rx(.793),ry(.302),rx(.975),ry(.700))
-    qr=_qr_image(str(ticket['qr']),
-                 qr_box[2]-qr_box[0],qr_box[3]-qr_box[1])
-    rectangle((.791,.300,.978,.705),'white')
-    im.paste(qr,(qr_box[0]+(qr_box[2]-qr_box[0]-qr.width)//2,
-                 qr_box[1]+(qr_box[3]-qr_box[1]-qr.height)//2))
-    paint=ImageDraw.Draw(im)
-    title('ESCANEAR QR',(.805,.710,.963,.767),17,accent)
-    paint.line([(rx(.806),ry(.783)),(rx(.963),ry(.783))],
-               fill='#adb8c8',width=max(1,H//330))
+    # All printed example QR/number/person fragments are removed in a single
+    # original-column pass; never stick small badges on top of stale codes.
+    strip_x=298 if is_municipal else 294
+    artist.rectangle((px(strip_x),py(1),W-3,H-3),fill='white')
+    artist.line((px(strip_x),py(1),px(strip_x),H-3),
+                fill=ink,width=max(1,round(H/300)))
+    artist.rounded_rectangle((px(strip_x+5),py(7),W-9,py(27)),
+            radius=max(2,round(H/170)),fill=ink)
+    letters('CONTROL DE ACCESO',(strip_x+7,8,SW-6,26),
+            size=8,color='white',lines=2)
+    artist.rounded_rectangle((px(strip_x+5),py(30),W-9,py(53)),
+            radius=max(2,round(H/180)),outline=ink,
+            width=max(1,round(H/300)),fill='white')
+    letters(f"N.º {int(ticket['number']):04d}",
+            (strip_x+7,31,SW-6,52),size=12,color=ink,lines=1)
+    qr_box=(px(strip_x+5),py(56),W-9,py(min(SH-31,126)))
+    maxw=qr_box[2]-qr_box[0]
+    maxh=qr_box[3]-qr_box[1]
+    qr=_qr_image(str(ticket['qr']),maxw,maxh)
+    im.paste(qr,(qr_box[0]+(maxw-qr.width)//2,
+                 qr_box[1]+(maxh-qr.height)//2))
+    artist=ImageDraw.Draw(im)
+    letters('ESCANEAR QR',(strip_x+6,min(SH-30,127),SW-6,min(SH-19,143)),
+            size=7,color=ink)
     seat=str(ticket.get('seat_label') or '').strip()
-    title(seat if seat else '1 PERSONA',(.806,.793,.962,.901),26,accent)
-    title('PROHIBIDA SU VENTA',(.807,.922,.960,.955),12,accent)
+    letters(seat if seat else '1 PERSONA',
+            (strip_x+6,SH-21,SW-7,SH-4),size=10,color=ink)
 
-    # Entire bottom code strip is cleared. It must not show the previous JPG
-    # barcode through empty gaps, or be covered by the admission notes.
-    rectangle((.206,.834,.772,.979),'white')
-    max_width=rx(.751)-rx(.225)
-    code=_code128_image(barcode_ticket_value(ticket['id']),
-                        max_width,max(20,ry(.956)-ry(.859)))
-    im.paste(code,((rx(.206)+rx(.772)-code.width)//2,ry(.856)))
-
+    # Erase the old sample Code128 entirely, then print a NEW Code128 for
+    # ticket['id']; black bars with proper white quiet zones and no scaling.
+    clean(barcode_box,background='white')
+    x0,y0,x1,y1=barcode_box
+    maxw=px(x1)-px(x0)
+    maxh=max(12,py(y1)-py(y0))
+    code=_code128_image(barcode_ticket_value(ticket['id']),maxw,maxh)
+    im.paste(code,((px(x0)+px(x1)-code.width)//2,py(y0)))
     if color_preview:return im
     return im.convert('L').convert('1',dither=Image.Dither.FLOYDSTEINBERG).convert('RGB')
 
