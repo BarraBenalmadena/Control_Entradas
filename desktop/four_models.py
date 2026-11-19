@@ -207,10 +207,12 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
         if wide_logo is not None:
             put_logo(wide_logo,(285,16,764,88))
         else:
+            put_logo(emblem,(279,20,336,104))
             text(design.get("cabecera") or "Escuela Municipal de Música y Danza",
-                 (282,18,766,77),31,lines=2,minimum=15,factor=head_factor)
+                 (338,18,766,77),29,lines=2,minimum=14,factor=head_factor)
         text(design.get("subtitulo") or "Arroyo de la Miel",
-             (286,79,762,111),19,ink,factor=head_factor)
+             (342 if wide_logo is None else 286,79,762,111),
+             19,ink,factor=head_factor)
         rule([(286,118),(765,118)],color="#d4a232",width=4)
     elif variant==2:
         text(design.get("cabecera") or "Escuela Municipal de Música y Danza",
