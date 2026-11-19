@@ -138,6 +138,33 @@ def _qr_image(value: str, max_width: int = 240, max_height: int = 240) -> Image.
     return qr.make_image(fill_color='black',back_color='white').convert('RGB')
 
 
+
+def draw_standard_access_qr(canvas: Image.Image, value: str,
+                            region: tuple[int,int,int,int]) -> tuple[int,int]:
+    """Dibuja en los 12 modelos un QR grande y de idéntica escala física.
+
+    El mayor tamaño seguro es 4 puntos por módulo cuando cabe en un rollo
+    de 80 mm a 165 mm de largo. En otros formatos escoge automáticamente
+    el mayor tamaño entero que cabe sin interpolar la matriz, respetando
+    sus cuatro módulos blancos de silencio.
+
+    La capacidad común se calcula con dimensiones FÍSICAS, no con el ancho
+    de cada talón, para evitar tamaños variables entre plantillas.
+    """
+    x0,y0,x1,y1=map(int,region)
+    if x1<=x0 or y1<=y0:
+        raise ValueError('El espacio reservado al QR es inválido.')
+    from PIL import ImageDraw
+    ImageDraw.Draw(canvas).rectangle((x0,y0,x1-1,y1-1),fill='white')
+    max_w=min(x1-x0,round(230*canvas.width/1080))
+    max_h=min(y1-y0,round(284*canvas.height/576))
+    qr=_qr_image(value,max_w,max_h)
+    left=x0+(x1-x0-qr.width)//2
+    top=y0+(y1-y0-qr.height)//2
+    canvas.paste(qr,(left,top))
+    return qr.size
+
+
 def barcode_ticket_value(ticket_id: str) -> str:
     """16-digit bearer identifier derived from 52 random bits of the ticket UUID.
 
