@@ -76,7 +76,8 @@ def install_reference_docx(filename):
             # cuatro siguientes tienen margen alrededor del ticket.
             top=.035 if source_num<=4 else .15
             bottom=.94 if source_num<=4 else .88
-            right=.24 if source_num<=4 else .26
+            # Solo motivo izquierdo: no copiar avisos ni textos del ejemplo.
+            right=.17 if source_num<=4 else .19
             region=photo.crop((round(w*.016),round(h*top),
                                round(w*right),round(h*bottom)))
             # Mantener aspecto original: el lienzo del modelo lo adapta
