@@ -953,6 +953,34 @@ def launch_gui():
         ttk.Checkbutton(printer_group,text='Cortar cada ticket (ESC/POS)',variable=cut).grid(row=3,column=0,columnspan=2,sticky='w',pady=6)
         ttk.Combobox(printer_group,textvariable=cut_type,values=('Completo','Parcial'),width=12,state='readonly').grid(row=3,column=2,columnspan=2,sticky='w',padx=7)
         printer_group.columnconfigure(1,weight=1)
+        qr_detail=tk.StringVar()
+        def refresh_qr_detail(*_):
+            try:
+                paper=int(roll.get())
+                mm=int(length.get())
+                if paper not in ticket_printer.PRINTABLE_DOTS or not 85<=mm<=190:
+                    qr_detail.set('Selecciona un tamaño de papel y un largo válido.')
+                    return
+                _,item=get_ticket(event_id,1)
+                qr_image=ticket_printer._qr_image(
+                    str(item['qr']),
+                    round(230*(mm*8)/1080),
+                    round(284*ticket_printer.PRINTABLE_DOTS[paper]/576))
+                qr_detail.set(
+                    f'QR uniforme en los 12 modelos: {qr_image.width/8:.1f} × '
+                    f'{qr_image.height/8:.1f} mm. '
+                    'Recomendado: 80 mm de rollo y largo 165 mm para el QR máximo.')
+            except (ValueError,KeyError) as error:
+                qr_detail.set('Comprueba el formato de papel: '+str(error))
+        ttk.Button(printer_group,text='QR MÁS GRANDE · LARGO 165 mm',
+                   command=lambda:length.set('165')).grid(
+                       row=4,column=0,columnspan=2,sticky='w',padx=6,pady=(5,3))
+        ttk.Label(printer_group,textvariable=qr_detail,
+                  foreground='#174f76',wraplength=520).grid(
+                      row=4,column=2,columnspan=2,sticky='w',padx=8,pady=(5,3))
+        roll.trace_add('write',refresh_qr_detail)
+        length.trace_add('write',refresh_qr_detail)
+        refresh_qr_detail()
         ttk.Label(print_body,text='80 mm de papel ≠ 80 mm imprimibles: habitualmente son 72 mm (576 puntos).\n'
                                   'ZYWELL compatible: GS V 66 0, corte PARCIAL con avance, según manual POS-80XX.\n'
                                   'Primero usa Prueba de calibración; después imprime SOLO 2 tickets. El modelo importa.\n'
@@ -972,7 +1000,7 @@ def launch_gui():
         art=ttk.LabelFrame(designer_body,text='Plantilla horizontal, logos, tipografía y márgenes',padding=10)
         art.pack(fill='x')
         labels={
-            'plantilla':'Modelo principal (8 disponibles)',
+            'plantilla':'Modelo principal (12 disponibles)',
             'foto_centro_x_pct':'Centrar foto horizontal (%) · 0 izquierda, 100 derecha',
             'foto_centro_y_pct':'Centrar foto vertical (%) · 0 arriba, 100 abajo',
             'foto_zoom_pct':'Ampliación de la foto (%) · 60–250',
