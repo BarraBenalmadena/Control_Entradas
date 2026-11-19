@@ -125,8 +125,17 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
             (X(rect[0]),Y(rect[1]),X(rect[2]),Y(rect[3])),
             size=max(8,Y(size)),bold=bold,lines=lines,
             min_size=max(7,Y(mini)),fill=fg)
-    ayto=tp._open_image(design.get('logo_ayto'))
-    centro=tp._open_image(design.get('logo_centro'))
+    def open_logo(path):
+        if not path:return None
+        try:
+            with Image.open(path) as src:
+                # Crucial: preserve PNG alpha. Converting to RGB first makes
+                # transparent user logos render as black rectangular stickers.
+                return ImageOps.exif_transpose(src).convert('RGBA')
+        except (OSError,ValueError):
+            return None
+    ayto=open_logo(design.get('logo_ayto'))
+    centro=open_logo(design.get('logo_centro'))
     def draw_logo(source,coords):
         # Crop excess transparent/pale margins before fitting a horizontal
         # Education logo; preserve color and aspect, never distort.
