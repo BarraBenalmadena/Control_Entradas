@@ -6,6 +6,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import sys
+import os
+import io
+from zipfile import ZipFile
 from PIL import Image, ImageDraw, ImageOps, ImageColor
 
 NAMES=["Violín navideño","Bola de Navidad","Clave dorada","Telón teatral","Ballet acuarela","Elegancia musical","Micrófono dorado","Fachada iluminada","Música en acuarela","Danza azul","Ballet rosado","Gala con telón","Concierto en escena","Coro infantil","Geometría azul","Navidad dorada","Pueblo nevado","Árbol institucional","Danza moderna","Piano clásico","Belén estrellado","Violín de concierto","Bastón navideño","Municipal bicolor","Farol de invierno","Coral azul","Máscaras de teatro","Arquitectura azul","Flor de Pascua","Sinfonía dorada"]
@@ -14,18 +17,70 @@ MODELS=tuple(f"{i:02d} · {NAMES[i-1]}" for i in range(1,31))
 INDEX={name:i for i,name in enumerate(MODELS,1)}
 
 def asset_dir():
-    from pathlib import Path
-    places=(Path(sys.executable).resolve().parent/'catalogo_nuevo',
+    """El catálogo importado persiste en Documentos, fuera del EXE."""
+    root=Path(os.environ.get('CONTROL_ENTRADAS_DATA') or
+              Path.home()/'Documents'/'ControlEntradas')
+    places=(root/'catalogo_nuevo',
+            Path(sys.executable).resolve().parent/'catalogo_nuevo',
             Path(__file__).resolve().parent/'catalogo_nuevo')
     return next((p for p in places if p.is_dir()),places[0])
 
+
 def art_path(i):
-    p=asset_dir()/f'art_{i:02d}.jpg'
-    if not p.is_file():
-        raise FileNotFoundError(
-            f'Falta {p.name}. Extrae el ZIP completo, incluida catalogo_nuevo, junto al EXE.'
-        )
-    return p
+    folder=asset_dir()
+    p=folder/f'art_{i:02d}.jpg'
+    if p.is_file():return p
+    # Ocho fotografías originales importadas, repartidas entre 30
+    # composiciones gráficas distintas sin duplicar archivos.
+    if i>8:
+        shared=folder/f'art_{(i-1)%8+1:02d}.jpg'
+        if shared.is_file():return shared
+    raise FileNotFoundError(
+        f'Falta art_{i:02d}.jpg. Pulsa «IMPORTAR IMÁGENES DEL WORD» en la galería.')
+
+
+def install_reference_docx(filename):
+    """Importa solo el motivo artístico izquierdo de las 8 muestras Word.
+
+    Descarta expresamente el QR, código de barras, número y texto impresos
+    en la muestra; el generador crea códigos válidos nuevos para cada entrada.
+    """
+    filename=Path(filename)
+    if filename.suffix.lower()!='.docx':
+        raise ValueError('Selecciona el documento Word de ocho diseños (.docx).')
+    destination=Path(os.environ.get('CONTROL_ENTRADAS_DATA') or
+                     Path.home()/'Documents'/'ControlEntradas')/'catalogo_nuevo'
+    # Orden artístico visual para los primeros ocho modelos del catálogo.
+    samples=(4,3,1,6,2,5,8,7)
+    illustrations=[]
+    with ZipFile(filename) as word:
+        for index,source_num in enumerate(samples,1):
+            member=f'word/media/image{source_num}.png'
+            try:
+                raw=word.read(member)
+            except KeyError as exc:
+                raise ValueError(f'El documento no contiene {member}.') from exc
+            if len(raw)>12_000_000:
+                raise ValueError('La imagen del Word supera el tamaño permitido.')
+            with Image.open(io.BytesIO(raw)) as source:
+                photo=ImageOps.exif_transpose(source).convert('RGB')
+            w,h=photo.size
+            # Las cuatro muestras superiores son entradas completas; las
+            # cuatro siguientes tienen margen alrededor del ticket.
+            top=.035 if source_num<=4 else .15
+            bottom=.94 if source_num<=4 else .88
+            right=.24 if source_num<=4 else .26
+            region=photo.crop((round(w*.016),round(h*top),
+                               round(w*right),round(h*bottom)))
+            # Mantener aspecto original: el lienzo del modelo lo adapta
+            # únicamente al panel fotográfico, nunca al texto ni al QR.
+            illustrations.append(region)
+    destination.mkdir(parents=True,exist_ok=True)
+    for index,region in enumerate(illustrations,1):
+        path=destination/f'art_{index:02d}.jpg'
+        region.save(path,'JPEG',quality=92,optimize=True)
+    return len(illustrations)
+
 
 def _fallback_poster(idx, color):
     """Ilustración vectorial de seguridad cuando no se distribuyó un JPG.
