@@ -1067,7 +1067,10 @@ def export_catalog_pdf(event: dict, ticket: dict, target: Path,
     columns=2
     card_w=(page_w-64)/columns
     thumb_w=card_w-14
-    thumb_h=thumb_w * 80/135
+    # La maqueta A4 debe mantener exactamente la proporción del raster
+    # generado para el rollo: antes se forzaba 80/135 y deformaba tickets
+    # de 165 mm, una de las causas del catálogo "aplastado".
+    thumb_h=thumb_w * (PRINTABLE_DOTS[width_mm]/(length_mm*8))
     card_h=thumb_h+32
     rows_per_page=max(1,int((page_h-80)//card_h))
     per_page=columns*rows_per_page
