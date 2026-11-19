@@ -53,6 +53,7 @@ def install_reference_docx(filename):
     # Orden artístico visual para los primeros ocho modelos del catálogo.
     samples=(4,3,1,6,2,5,8,7)
     illustrations=[]
+    municipal_crest=None
     with ZipFile(filename) as word:
         for index,source_num in enumerate(samples,1):
             member=f'word/media/image{source_num}.png'
@@ -65,6 +66,12 @@ def install_reference_docx(filename):
             with Image.open(io.BytesIO(raw)) as source:
                 photo=ImageOps.exif_transpose(source).convert('RGB')
             w,h=photo.size
+            if source_num==4:
+                # Escudo municipal sin la inscripción lateral: referencia
+                # aportada por el usuario en el encabezado del diseño 4.
+                municipal_crest=photo.crop(
+                    (round(w*.316),round(h*.045),
+                     round(w*.372),round(h*.251)))
             # Las cuatro muestras superiores son entradas completas; las
             # cuatro siguientes tienen margen alrededor del ticket.
             top=.035 if source_num<=4 else .15
@@ -79,6 +86,8 @@ def install_reference_docx(filename):
     for index,region in enumerate(illustrations,1):
         path=destination/f'art_{index:02d}.jpg'
         region.save(path,'JPEG',quality=92,optimize=True)
+    if municipal_crest is not None:
+        municipal_crest.save(destination/'escudo_benalmadena.png','PNG')
     return len(illustrations)
 
 
