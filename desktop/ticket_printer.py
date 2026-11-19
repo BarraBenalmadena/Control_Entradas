@@ -1182,7 +1182,8 @@ def print_pdf_windows(path: Path, printer_name: str) -> tuple[int,int]:
             # Renderiza a 144 dpi para que letras, escudos y QR salgan nítidos.
             pix=page.get_pixmap(matrix=fitz.Matrix(2,2),
                                 colorspace=fitz.csRGB,alpha=False)
-            im=Image.frombytes('RGB',(pix.width,pix.height),pix.samples)
+            # A4 impreso siempre en B/N; el PDF y la galería pueden verse a color.
+            im=Image.frombytes('RGB',(pix.width,pix.height),pix.samples).convert('L').convert('RGB')
             destination=_fit_page_in_printer(page.rect.width,page.rect.height,
                                              width,height)
             dc.StartPage()
