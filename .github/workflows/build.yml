@@ -26,6 +26,14 @@ jobs:
         run: python -m pip install -r desktop/requirements.txt opencv-python-headless numpy
       - name: Ejecutar pruebas
         run: python -m unittest discover -s tests -v
+      - name: Generar cuatro vistas reales de prueba en color y B/N
+        run: python desktop/four_proof.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ControlEntradas_4_Prototipos_Pruebas
+          path: dist-prototipos/*
+          if-no-files-found: error
+          retention-days: 30
       - name: Compilar aplicación con módulos de plano y exportación
         run: pyinstaller --noconfirm --clean --onefile --windowed --paths desktop --hidden-import=win32print --hidden-import=win32ui --hidden-import=win32con --hidden-import=PIL.ImageWin --hidden-import=seat_plan --hidden-import=fitz --collect-submodules=reportlab.graphics.barcode --name ControlEntradas_Windows desktop/control_entradas.py
       - name: Comprobar módulos cargados dentro del EXE real
