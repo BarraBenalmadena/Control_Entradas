@@ -26,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 import ticket_printer  # Required by barcode validation in headless Windows server
 
-VERSION = "1.2.0"
+VERSION = "2.17"
 PORT = 8765
 DATA_DIR = Path(os.environ.get("CONTROL_ENTRADAS_DATA", str(Path.home() / "Documents" / "ControlEntradas")))
 DB_PATH = DATA_DIR / "entradas.sqlite3"
