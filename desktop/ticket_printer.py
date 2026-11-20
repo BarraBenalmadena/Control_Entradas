@@ -180,21 +180,68 @@ def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Im
     w,h=im.size
     sx=lambda n:round(n*w/1080)
     sy=lambda n:round(n*h/576)
-    grey=ImageOps.grayscale(im)
-    # En el vecindario de un bloque azul/burdeos oscuro, el fondo queda
-    # blanco y las letras que originalmente eran blancas pasan a negro.
-    area=grey.filter(ImageFilter.BoxBlur(max(5,round(h/72))))
-    filled=area.point(lambda value:255 if value<182 else 0)
-    normal=grey.point(lambda value:0 if value<135 else 255)
-    # Si el fondo ocupa una zona oscura amplia, invertir por semántica:
-    # el color sólido pasa a blanco y SOLO las letras blancas pasan a negro.
-    # No invertir simplemente grises: un fondo dorado de gris ~120
-    # volvería a quedar negro en la térmica.
-    inverted=grey.point(lambda value:0 if value>193 else 255)
-    result=Image.composite(inverted,normal,filled).convert("RGB")
     model=design.get("plantilla")
     try:index=MODELS.index(model)
     except ValueError:index=0
+    grey=ImageOps.grayscale(im)
+    # Máscaras de zonas sólidas por geometría REAL de cada plantilla.
+    # Es preferible al invertir grises: conserva la tipografía negra limpia
+    # y transforma uniformemente la letra blanca original en negro.
+    mask=Image.new("L",(w,h),0)
+    md=ImageDraw.Draw(mask)
+    def bounds(coords):
+        return (sx(coords[0]),sy(coords[1]),
+                sx(coords[2]),sy(coords[3]))
+    def rounded(coords,radius=9):
+        md.rounded_rectangle(bounds(coords),radius=max(1,sy(radius)),fill=255)
+    def solid(coords):
+        md.rectangle(bounds(coords),fill=255)
+    def polygon(points):
+        md.polygon([(sx(x),sy(y)) for x,y in points],fill=255)
+    if index<4:
+        stub=(830,1075)
+        L=(266,259,294,265)[index];R=819
+        rounded((stub[0]+6,26,stub[1]-6,84),9)
+        date_top=278 if index<3 else 285
+        place_top=date_top+58+8
+        rounded((L,place_top,R,place_top+43),11)
+        if index==2:
+            rounded((L,148,R,267),15)
+    elif index<8:
+        stub=(5,249) if index==4 else (825,1075)
+        L,R=((255,808),(17,611),(227,817),(16,611))[index-4]
+        rounded((stub[0]+7,26,stub[1]-7,84),10)
+        rounded((L+4,354,R-4,397),13)
+        if index==5:
+            polygon([(L+7,151),(R-7,151),(R-19,202),
+                     (R-7,251),(L+7,251),(L+20,202)])
+    else:
+        stub=(825,1075)
+        L=315 if index==10 else 281
+        R=817
+        if index==11:
+            # Talón azul sólido, excluyendo el número y el QR blancos.
+            solid((stub[0],11,stub[1],563))
+            md.rectangle(bounds((stub[0]+14,100,stub[1]-14,161)),fill=0)
+            md.rectangle(bounds((stub[0]+6,164,stub[1]-6,448)),fill=0)
+        else:
+            rounded((stub[0]+7,26,stub[1]-7,83),9)
+        venue_top=400 if index==9 else 354
+        venue_bottom=432 if index==9 else 398
+        rounded((L+1,venue_top,R-2,venue_bottom),11)
+        if index==9:
+            polygon([(L+64,277),(R-64,277),(R-81,313),
+                     (R-64,345),(L+64,345),(L+82,313)])
+        if index==10:
+            rounded((L-8,156,R,276),12)
+        if index in (8,10):
+            solid((L+1,407,R-2,482))
+    # En las zonas de relleno, las letras blancas se hacen negras.
+    # El resto conserva negro sobre blanco: no hay sombras ni huecos
+    # horizontales de letras producidos por filtros de vecindad.
+    ordinary=grey.point(lambda value:0 if value<145 else 255)
+    reversed_ink=grey.point(lambda value:0 if value>195 else 255)
+    result=Image.composite(reversed_ink,ordinary,mask).convert("RGB")
     if index==4:
         photo_region=(810,13,1070,562)
         stub=(5,249)
@@ -224,7 +271,7 @@ def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Im
     photo_box=(sx(photo_region[0]),sy(photo_region[1]),
                sx(photo_region[2]),sy(photo_region[3]))
     lighten=grey.crop(photo_box).point(
-        lambda value:min(255,round(value*1.65+50)))
+        lambda value:min(255,round(value*1.8+100)))
     photo_bw=lighten.convert("1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
     result.paste(photo_bw,photo_box[:2])
     # Code128 y QR: preservar negro puro, blanco puro y zona de silencio.
@@ -234,6 +281,24 @@ def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Im
     qr_rect=(sx(stub[0]+6),sy(164),sx(stub[1]-6),sy(448))
     qr=grey.crop(qr_rect).point(lambda p:0 if p<128 else 255).convert("RGB")
     result.paste(qr,qr_rect[:2])
+    # Mantener cajas del modelo con bordes finos curvos, sin relleno negro.
+    thin=max(1,sy(2))
+    pen=ImageDraw.Draw(result)
+    if index<4:
+        pen.rounded_rectangle(bounds((stub[0]+6,26,stub[1]-6,84)),
+            radius=max(1,sy(9)),outline="black",width=thin)
+        pen.rounded_rectangle(bounds((L,place_top,R,place_top+43)),
+            radius=max(1,sy(11)),outline="black",width=thin)
+    elif index<8:
+        pen.rounded_rectangle(bounds((stub[0]+7,26,stub[1]-7,84)),
+            radius=max(1,sy(10)),outline="black",width=thin)
+        pen.rounded_rectangle(bounds((L+4,354,R-4,397)),
+            radius=max(1,sy(12)),outline="black",width=thin)
+    else:
+        pen.rounded_rectangle(bounds((stub[0]+7,26,stub[1]-7,83)),
+            radius=max(1,sy(9)),outline="black",width=thin)
+        pen.rounded_rectangle(bounds((L+1,venue_top,R-2,venue_bottom)),
+            radius=max(1,sy(11)),outline="black",width=thin)
     # Borde exterior uniforme, grueso y curvo en las doce variantes.
     d=ImageDraw.Draw(result)
     d.rounded_rectangle((sx(5),sy(5),w-sx(5),h-sy(5)),
