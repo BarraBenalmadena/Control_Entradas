@@ -76,7 +76,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MainActivity extends AppCompatActivity {
     private static final String PREFS = "control_entradas_v01";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean analyzing = new AtomicBoolean(false); // validación de acceso en curso
+    private final AtomicBoolean analyzing = new AtomicBoolean(false);
+    private final AtomicBoolean sequenceDialogOpen = new AtomicBoolean(false); // validación de acceso en curso
     private final AtomicBoolean frameBusy = new AtomicBoolean(false); // una imagen ML Kit a la vez
     private final ExecutorService cameraExecutor = Executors.newSingleThreadExecutor();
     private final ToneGenerator feedbackTone = new ToneGenerator(AudioManager.STREAM_ALARM, 95);
@@ -194,9 +195,10 @@ public class MainActivity extends AppCompatActivity {
         try {
             if(offline.hasPackage()) {
                 publicKey=offline.importedKey();
-                setEvents(new JSONArray().put(offline.event()));
+                setEvents(offline.importedEvents());
                 validationMode.setSelection(prefs.getInt("scan_mode",1));
-                offlineStatus.setText("JSON firmado cargado · "+offline.ticketCount()+" entradas · sin IP de Windows");
+                offlineStatus.setText("JSON firmados guardados · "+
+                    offline.importedEvents().length()+" funciones · sin IP de Windows");
                 updateOfflineCounter();
             }else setEvents(new JSONArray(prefs.getString("events", "[]")));
         }catch (Exception ignored) { }
@@ -284,6 +286,12 @@ public class MainActivity extends AppCompatActivity {
         ticketListButton=button("VER ENTRADAS DEL JSON Y ESTADO DE ACCESO");
         ticketListButton.setOnClickListener(v->showTicketList());
         layout.addView(ticketListButton);
+        Button allFunctionsButton=button("FUNCIONES IMPORTADAS · DISPONIBLES POR FECHA");
+        allFunctionsButton.setOnClickListener(v->showImportedFunctions());
+        layout.addView(allFunctionsButton);
+        Button firstTicketButton=button("CAMBIAR PRIMER TICKET ACTIVO");
+        firstTicketButton.setOnClickListener(v->configureFirstActive());
+        layout.addView(firstTicketButton);
         layout.addView(text("Sin red: asigna rangos de números DISTINTOS a cada móvil",11,false));
         LinearLayout ranges=new LinearLayout(this);ranges.setOrientation(LinearLayout.HORIZONTAL);
         rangeFrom=new EditText(this);rangeFrom.setHint("Desde, ej. 1");rangeFrom.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -417,7 +425,8 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.setPadding(dp(10),dp(8),dp(10),dp(10));
         fastPanel.setBackgroundColor(Color.WHITE);
         View[] quick={connectionView,eventLabel,eventSpinner,modeLabel,validationMode,importJson,
-                offlineStatus,voiceToggle,ticketListButton,cameraView,zoomRow,camera,statusView,counterView,accessListPanel,queueView};
+                offlineStatus,voiceToggle,ticketListButton,allFunctionsButton,firstTicketButton,
+                cameraView,zoomRow,camera,statusView,counterView,accessListPanel,queueView};
         for(View view:quick) layout.removeView(view);
         LinearLayout settingsPanel=new LinearLayout(this);
         settingsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -441,6 +450,63 @@ public class MainActivity extends AppCompatActivity {
         fastPanel.addView(shareButton,5);
         shareButton.setOnClickListener(v->shareSignedEvent());
         refreshPending();
+    }
+
+    private void showImportedFunctions(){
+        if(!offline.hasPackage()){
+            new AlertDialog.Builder(this).setTitle("Funciones importadas")
+                .setMessage("Importa uno o varios JSON firmados desde Windows.")
+                .setPositiveButton("Cerrar",null).show();
+            return;
+        }
+        JSONArray summaries=offline.inventorySummaries();
+        StringBuilder content=new StringBuilder();
+        int pending=0;
+        for(int i=0;i<summaries.length();i++){
+            JSONObject f=summaries.optJSONObject(i);
+            if(f==null)continue;
+            pending+=f.optInt("available");
+            content.append(f.optString("start_time").replace("T"," "))
+                .append("\n").append(f.optString("name"))
+                .append("\nImportadas: ").append(f.optInt("total"))
+                .append(" · Utilizadas: ").append(f.optInt("used"))
+                .append(" · Disponibles: ").append(f.optInt("available"))
+                .append("\nPrimera activa: ").append(f.optInt("first_active"))
+                .append(" · Siguiente: ").append(
+                    f.optInt("next_expected")<0?"ninguna":
+                    f.optInt("next_expected")).append("\n\n");
+        }
+        new AlertDialog.Builder(this)
+            .setTitle(summaries.length()+" funciones · "+pending+" entradas disponibles")
+            .setMessage(content.toString()).setPositiveButton("Cerrar",null).show();
+    }
+    private void configureFirstActive(){
+        if(!offline.hasPackage()){
+            showResult("IMPORTA PRIMERO UN JSON FIRMADO",Color.RED);return;
+        }
+        EditText value=new EditText(this);
+        value.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        value.setText(String.valueOf(offline.firstActive()));
+        new AlertDialog.Builder(this)
+            .setTitle("Primer ticket activo · "+offline.event().optString("name"))
+            .setMessage("Indica un número que esté incluido en el JSON de esta función. "
+                +"El aviso de orden compara cada entrada con la siguiente pendiente. "
+                +"No modifica la firma ni los QR.")
+            .setView(value)
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("GUARDAR",(dialog,which)->{
+                try {
+                    int number=Integer.parseInt(value.getText().toString().trim());
+                    offline.setFirstActive(number);
+                    updateOfflineCounter();
+                    showResult("PRIMER TICKET ACTIVO: "+
+                        String.format(java.util.Locale.US,"%04d",number),
+                        Color.rgb(130,82,0));
+                }catch(Exception ex){
+                    new AlertDialog.Builder(this).setTitle("No se pudo configurar")
+                        .setMessage(ex.getMessage()).setPositiveButton("Cerrar",null).show();
+                }
+            }).show();
     }
 
     private void showTicketList(){
@@ -478,8 +544,12 @@ public class MainActivity extends AppCompatActivity {
             JSONObject t=items.optJSONObject(i);
             if(t!=null && t.optBoolean("used"))used++;
         }
-        counterView.setText("JSON importado: "+items.length()+" entradas  ·  Validadas: "+used+
-                "  ·  Pendientes: "+(items.length()-used));
+        counterView.setText(offline.event().optString("name")+
+                "\nImportadas: "+items.length()+" · Usadas: "+used+
+                " · Disponibles: "+(items.length()-used)+
+                "\nPrimera activa: "+offline.firstActive()+
+                " · Siguiente esperado: "+(offline.nextExpected()<0?
+                    "ninguno":String.format(java.util.Locale.US,"%04d",offline.nextExpected())));
         refreshAccessLists();
     }
 
@@ -585,9 +655,11 @@ public class MainActivity extends AppCompatActivity {
                 publicKey=offline.importedKey();
                 prefs.edit().putString("pubkey",publicKey).apply();
                 runOnUiThread(()->{
-                    setEvents(new JSONArray().put(event));
                     validationMode.setSelection(1);
-                    offlineStatus.setText("Archivo verificado: "+event.optString("name")+" · "+offline.ticketCount()+" entradas");
+                    setEvents(offline.importedEvents());
+                    offlineStatus.setText("Archivo verificado: "+event.optString("name")+
+                        " · "+offline.importedEvents().length()+" funciones · "+
+                        offline.ticketCount()+" entradas en esta función");
                     updateOfflineCounter();
                     showResult("JSON CARGADO · CÁMARA PREPARADA",Color.rgb(20,122,71));
                     ensureContinuousScanner();
@@ -647,7 +719,25 @@ public class MainActivity extends AppCompatActivity {
         if(!eventIds.isEmpty()) eventSpinner.setSelection(selected);
         eventSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if(position < eventIds.size()) prefs.edit().putString("last_event", eventIds.get(position)).apply();
+                if(position < eventIds.size()) {
+                    String chosen=eventIds.get(position);
+                    prefs.edit().putString("last_event",chosen).apply();
+                    if(offline.hasPackage() &&
+                       (validationMode.getSelectedItemPosition()==1 ||
+                        validationMode.getSelectedItemPosition()==2)) {
+                        try{
+                            if(!offline.selectEvent(chosen)) {
+                                offlineStatus.setText("La función seleccionada no está importada "
+                                    +"como JSON firmado. Selecciona una función importada.");
+                            }else{
+                                offlineStatus.setText("FUNCIÓN ACTIVA: "+
+                                   offline.event().optString("name")+
+                                   " · Primera entrada "+offline.firstActive()+
+                                   " · Siguiente "+offline.nextExpected());
+                            }
+                        }catch(Exception ex){showResult("ERROR AL ELEGIR FUNCIÓN: "+ex.getMessage(),Color.RED);}
+                    }
+                }
                 refreshCounter();
                 if(continuousEnabled && cameraView!=null) cameraView.post(()->ensureContinuousScanner());
             }
@@ -663,7 +753,8 @@ public class MainActivity extends AppCompatActivity {
         int index = eventSpinner.getSelectedItemPosition();
         if(index<0 || index>=events.length()) { counterView.setText(""); return; }
         JSONObject ev = events.optJSONObject(index);
-        if(offline.hasPackage()){updateOfflineCounter();return;}
+        if(offline.hasPackage() && validationMode.getSelectedItemPosition()!=0 &&
+           validationMode.getSelectedItemPosition()!=3){updateOfflineCounter();return;}
         if(ev != null) counterView.setText("Accesos confirmados al conectar: " + ev.optInt("used") + " / " + ev.optInt("issued"));
     }
     private void showResult(String message, int color) {
@@ -787,7 +878,7 @@ public class MainActivity extends AppCompatActivity {
                             String scanKey=scanIdentity(candidate);
                             boolean same=scanKey.equals(blockedQr);
                             lastQrVisibleMs=now;
-                            if(same || analyzing.get())return;
+                            if(same || analyzing.get() || sequenceDialogOpen.get())return;
                             showResult("CÓDIGO DETECTADO · VALIDANDO...",Color.rgb(130,82,0));
                             detectedBeep();
                             if(!candidate.startsWith("CE1.") && !candidate.matches("[0-9]{16}")){
@@ -854,6 +945,41 @@ public class MainActivity extends AppCompatActivity {
                     response=coordinatorRequest(qr,event,host,secret);
                 }else throw new Exception("Modo de validación desconocido");
                 String status=response.optString("status","invalid");
+                if("warning".equals(status) && (mode==1 || mode==2)){
+                    final int fromWarn=(mode==1 && !first.isEmpty())?Integer.parseInt(first):1;
+                    final int toWarn=(mode==1 && !last.isEmpty())?Integer.parseInt(last):Integer.MAX_VALUE;
+                    final String warning=response.optString("message",
+                        "Entrada fuera del orden establecido.");
+                    sequenceDialogOpen.set(true);
+                    runOnUiThread(()->new AlertDialog.Builder(this)
+                        .setTitle("ORDEN DE ACCESO · COMPROBAR")
+                        .setMessage(warning+"\n\nLa entrada todavía NO está validada.")
+                        .setNegativeButton("CANCELAR",(d,w)->{
+                            sequenceDialogOpen.set(false);
+                            showResult("ENTRADA NO VALIDADA · FUERA DE ORDEN",Color.RED);
+                            scanFeedback(false);
+                        })
+                        .setPositiveButton("VALIDAR DE TODAS FORMAS",(d,w)->{
+                            executor.execute(()->{
+                                JSONObject accepted=offline.validate(qr,event,deviceId,
+                                    fromWarn,toWarn,true);
+                                boolean ok="valid".equals(accepted.optString("status"));
+                                runOnUiThread(()->{
+                                    sequenceDialogOpen.set(false);
+                                    showResult(ok?"ACCESO AUTORIZADO POR EXCEPCIÓN\nN.º "+
+                                        accepted.optInt("number"):
+                                        "NO AUTORIZADO\n"+accepted.optString("message"),
+                                        ok?Color.rgb(20,122,71):Color.RED);
+                                    scanFeedback(ok);
+                                    say(ok?"Acceso autorizado.":"Entrada no autorizada.");
+                                    updateOfflineCounter();
+                                });
+                            });
+                        })
+                        .setOnCancelListener(d->sequenceDialogOpen.set(false))
+                        .show());
+                    return;
+                }
                 String message=response.isNull("message")?"":response.optString("message","");
                 String seat=response.isNull("seat")?"":response.optString("seat","");
                 if("null".equalsIgnoreCase(seat))seat="";
