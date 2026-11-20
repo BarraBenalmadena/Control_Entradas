@@ -165,6 +165,78 @@ def draw_standard_access_qr(canvas: Image.Image, value: str,
     return qr.size
 
 
+
+def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Image:
+    """Conversión conservadora a térmica: sin grandes manchas oscuras.
+
+    Invierte exclusivamente áreas oscuras amplias para convertir fondo oscuro
+    en blanco y letras claras en negras. Las fotografías se aclaran y los QR/
+    Code128 se restauran con sus píxeles originales para no perder módulos.
+    El soporte real (ZYWELL) requiere una prueba física de contraste/cabezal.
+    """
+    from PIL import ImageFilter, ImageOps, ImageDraw
+    from four_models import MODELS
+    im=original.convert("RGB")
+    w,h=im.size
+    sx=lambda n:round(n*w/1080)
+    sy=lambda n:round(n*h/576)
+    grey=ImageOps.grayscale(im)
+    # En el vecindario de un bloque azul/burdeos oscuro, el fondo queda
+    # blanco y las letras que originalmente eran blancas pasan a negro.
+    area=grey.filter(ImageFilter.BoxBlur(max(5,round(h/72))))
+    filled=area.point(lambda value:255 if value<125 else 0)
+    neg=ImageOps.invert(grey)
+    mixed=Image.composite(neg,grey,filled)
+    # Umbral firme: pocos puntos negros frente a extensiones de gris.
+    result=mixed.point(lambda value:0 if value<135 else 255).convert("RGB")
+    model=design.get("plantilla")
+    try:index=MODELS.index(model)
+    except ValueError:index=0
+    if index==4:
+        photo_region=(810,13,1070,562)
+        stub=(5,249)
+        body=(255,808)
+    elif index==5:
+        photo_region=(618,13,820,562)
+        stub=(825,1075)
+        body=(17,611)
+    elif index==6:
+        photo_region=(11,13,218,562)
+        stub=(825,1075)
+        body=(227,817)
+    elif index==7:
+        photo_region=(620,13,820,562)
+        stub=(825,1075)
+        body=(16,611)
+    elif index>=8:
+        photo_region=(10,13,327,562)
+        stub=(825,1075)
+        body=(315 if index==10 else 281,817)
+    else:
+        photo_region=(11,13,270 if index!=2 else 327,562)
+        stub=(830,1075)
+        body=(294 if index==2 else 266,819)
+    # Foto en modo tinta reducida. Evita que el papel se caliente en bloques
+    # extensos negros, sin aplicar cambios al QR.
+    photo_box=(sx(photo_region[0]),sy(photo_region[1]),
+               sx(photo_region[2]),sy(photo_region[3]))
+    lighten=grey.crop(photo_box).point(
+        lambda value:min(255,round(value*1.65+50)))
+    photo_bw=lighten.convert("1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
+    result.paste(photo_bw,photo_box[:2])
+    # Code128 y QR: preservar negro puro, blanco puro y zona de silencio.
+    code_rect=(sx(body[0]),sy(497),sx(body[1]),sy(557))
+    code=grey.crop(code_rect).point(lambda p:0 if p<175 else 255).convert("RGB")
+    result.paste(code,code_rect[:2])
+    qr_rect=(sx(stub[0]+6),sy(164),sx(stub[1]-6),sy(448))
+    qr=grey.crop(qr_rect).point(lambda p:0 if p<128 else 255).convert("RGB")
+    result.paste(qr,qr_rect[:2])
+    # Borde exterior uniforme, grueso y curvo en las doce variantes.
+    d=ImageDraw.Draw(result)
+    d.rounded_rectangle((sx(5),sy(5),w-sx(5),h-sy(5)),
+        radius=max(7,sy(22)),outline="black",width=max(3,sy(6)))
+    return result
+
 def barcode_ticket_value(ticket_id: str) -> str:
     """16-digit bearer identifier derived from 52 random bits of the ticket UUID.
 
