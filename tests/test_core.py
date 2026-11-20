@@ -138,6 +138,42 @@ class ControlEntradasTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 app.export_offline_event(eid,p,first_active=4)
 
+    def test_photo_dithering_never_erases_title_date_or_info_on_any_model(self):
+        """Dos JPG distintos no deben cambiar ni un píxel del área de texto.
+
+        Detecta la regresión v2.25: el tratamiento térmico pintaba un
+        rectángulo de fotografía por encima del texto de los modelos I-L.
+        """
+        from PIL import Image
+        from four_models import MODELS
+        from tempfile import TemporaryDirectory
+        eid=app.create_event("Alicia en el País de las Maravillas",
+                             "2026-12-22T18:00","libre",1)
+        ev,ticket=app.get_ticket(eid,1)
+        body_start=(266,259,294,265,255,17,227,16,281,281,315,281)
+        body_right=(819,819,819,819,808,611,817,611,817,817,817,817)
+        with TemporaryDirectory() as folder:
+            red=Path(folder)/"poster_rojo.jpg"
+            blue=Path(folder)/"poster_azul.jpg"
+            Image.new("RGB",(460,800),(255,30,25)).save(red)
+            Image.new("RGB",(460,800),(20,40,255)).save(blue)
+            for index,model in enumerate(MODELS):
+                rendered=[]
+                for poster in (red,blue):
+                    design={"plantilla":model,"poster":str(poster)}
+                    image=ticket_printer.render_landscape_ticket(
+                        ev,ticket,80,design,length_mm=125,
+                        color_preview=False)
+                    w,h=image.size
+                    sx=lambda value:round(value*w/1080)
+                    crop=image.crop((sx(body_start[index]+3),
+                        round(150*h/576),
+                        sx(body_right[index]-6),
+                        round(482*h/576)))
+                    rendered.append(crop.tobytes())
+                self.assertEqual(rendered[0],rendered[1],
+                    f"Imagen JPG cubre el texto del modelo {model}")
+
     def test_thermal_light_ticket_avoids_dark_fills_preserves_qr_for_all_models(self):
         from four_models import MODELS
         from PIL import Image
