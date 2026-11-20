@@ -23,6 +23,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,6 +36,8 @@ public final class OfflineManager {
     private final Context context;
     private final SharedPreferences prefs;
     private final File stored;
+    private final File eventFolder;
+    private final Map<String,String> importedRaw = new LinkedHashMap<>();
     private JSONObject data;
     private String publicKey = "";
     private final Map<String,JSONObject> tickets = new HashMap<>();
@@ -45,10 +48,29 @@ public final class OfflineManager {
         this.context=context.getApplicationContext();
         prefs=this.context.getSharedPreferences("offline_v1",Context.MODE_PRIVATE);
         stored=new File(this.context.getFilesDir(),"signed_event_v1.json");
-        if(stored.isFile()) try {
+        eventFolder=new File(this.context.getFilesDir(),"signed_events");
+        if(!eventFolder.isDirectory())eventFolder.mkdirs();
+        File[] files=eventFolder.listFiles((dir,name)->name.matches("[0-9a-f]{32}\\.json"));
+        if(files!=null)for(File file:files)try{
+            byte[] bytes=readAll(new FileInputStream(file),4_000_000);
+            load(new String(bytes,StandardCharsets.UTF_8),false);
+        }catch(Exception ignored){}
+        // Migración de versiones anteriores, sin borrar su archivo o accesos.
+        if(stored.isFile())try{
             byte[] bytes=readAll(new FileInputStream(stored),4_000_000);
-            load(new String(bytes, StandardCharsets.UTF_8), false);
-        } catch(Exception ignored) { data=null; }
+            String raw=new String(bytes,StandardCharsets.UTF_8);
+            JSONObject envelope=new JSONObject(raw);
+            JSONObject payload=new JSONObject(new String(
+                decodeUrl(envelope.getString("payload")),StandardCharsets.UTF_8));
+            String eid=payload.getJSONObject("event").getString("id");
+            if(!importedRaw.containsKey(eid))load(raw,true);
+        }catch(Exception ignored){}
+        if(!importedRaw.isEmpty())try {
+            String chosen=prefs.getString("active_event","");
+            if(!importedRaw.containsKey(chosen))
+                chosen=importedRaw.keySet().iterator().next();
+            selectEvent(chosen);
+        }catch(Exception ignored){}
     }
     private static byte[] decodeUrl(String v) {
         return Base64.decode(v,Base64.URL_SAFE|Base64.NO_PADDING|Base64.NO_WRAP);
@@ -88,37 +110,102 @@ public final class OfflineManager {
             if(t.optString("id").isEmpty() || byId.put(t.getString("id"),t)!=null)throw new Exception("Identificador de entrada inválido o duplicado");
         }
         if(persist){
-            // A signed new inventory is the authority for this event. A reimport
-            // of identical signed payload preserves actual local access history.
-            String incoming=encoded;
-            String previous=prefs.getString("inventory_payload_"+event.optString("id"),"");
-            if(previous.isEmpty() && stored.isFile()){
-                try{
-                    JSONObject former=new JSONObject(new String(readAll(new FileInputStream(stored),4_000_000),StandardCharsets.UTF_8));
-                    previous=former.optString("payload","");
-                }catch(Exception ignored){}
+            // Nunca borrar accesos locales al recibir un inventario firmado
+            // actualizado de la MISMA función. Los ID todavía válidos retienen
+            // su condición de utilizados, también tras una reinstalación.
+            File dest=new File(eventFolder,event.getString("id")+".json");
+            File temp=new File(eventFolder,event.getString("id")+".tmp");
+            try(FileOutputStream out=new FileOutputStream(temp,false)){
+                out.write(raw.getBytes(StandardCharsets.UTF_8));
+                out.getFD().sync();
             }
-            if(!previous.isEmpty() && !previous.equals(incoming)){
-                String oldPrefix="used_"+event.optString("id")+"_";
-                String timePrefix="used_time_"+event.optString("id")+"_";
-                SharedPreferences.Editor reset=prefs.edit();
-                for(String k:prefs.getAll().keySet()){
-                    if(k.startsWith(oldPrefix)||k.startsWith(timePrefix))reset.remove(k);
-                }
-                if(!reset.commit())throw new Exception("No se pudo cambiar el inventario de entradas");
-            }
-            try(FileOutputStream out=new FileOutputStream(stored,false)){out.write(raw.getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
-            prefs.edit().putString("trusted_key",pub)
-                .putString("inventory_payload_"+event.optString("id"),incoming).commit();
+            if(dest.isFile()&&!dest.delete())
+                throw new Exception("No se pudo actualizar el JSON existente");
+            if(!temp.renameTo(dest))
+                throw new Exception("No se pudo conservar el JSON firmado");
+            if(!prefs.edit().putString("trusted_key",pub)
+                .putString("inventory_payload_"+event.getString("id"),encoded)
+                .putString("active_event",event.getString("id")).commit())
+                throw new Exception("No se pudieron guardar los ajustes de la función");
         }
         data=decoded;publicKey=pub;tickets.clear();tickets.putAll(byId);
+        importedRaw.put(event.getString("id"),raw);
         return event;
     }
     public synchronized String importedKey(){ return publicKey; }
     public synchronized boolean hasPackage(){ return data!=null; }
     public synchronized File storedPackage() throws Exception {
-        if(data==null || !stored.isFile())throw new Exception("No hay JSON firmado para compartir");
-        return stored;
+        if(data==null)throw new Exception("No hay JSON firmado para compartir");
+        File current=new File(eventFolder,eventId()+".json");
+        if(current.isFile())return current;
+        if(stored.isFile())return stored;
+        throw new Exception("Archivo JSON firmado no disponible");
+    }
+    public synchronized boolean selectEvent(String eid) throws Exception {
+        String raw=importedRaw.get(eid);
+        if(raw==null)return false;
+        load(raw,false);
+        prefs.edit().putString("active_event",eid).apply();
+        return true;
+    }
+    public synchronized JSONArray importedEvents() {
+        JSONArray events=new JSONArray();
+        for(Map.Entry<String,String> pair:importedRaw.entrySet())try{
+            JSONObject pack=new JSONObject(pair.getValue());
+            JSONObject envelope=new JSONObject(new String(
+                decodeUrl(pack.getString("payload")),StandardCharsets.UTF_8));
+            events.put(envelope.getJSONObject("event"));
+        }catch(Exception ignored){}
+        return events;
+    }
+    public synchronized int firstActive(){
+        if(data==null)return 1;
+        int minimum=Integer.MAX_VALUE;
+        for(JSONObject t:tickets.values())
+            minimum=Math.min(minimum,t.optInt("number",Integer.MAX_VALUE));
+        int fallback=data.optInt("first_active",minimum==Integer.MAX_VALUE?1:minimum);
+        return prefs.getInt("first_active_"+eventId(),fallback);
+    }
+    public synchronized void setFirstActive(int number) throws Exception {
+        if(data==null)throw new Exception("Selecciona una función importada");
+        boolean present=false;
+        for(JSONObject t:tickets.values())
+            if(t.optInt("number")==number){present=true;break;}
+        if(!present)throw new Exception("El número debe estar entre los tickets importados de esta función");
+        if(!prefs.edit().putInt("first_active_"+eventId(),number).commit())
+            throw new Exception("No se pudo guardar el primer ticket activo");
+    }
+    public synchronized int nextExpected(){
+        if(data==null)return -1;
+        int first=firstActive(),expected=Integer.MAX_VALUE;
+        String eid=eventId();
+        for(JSONObject t:tickets.values()){
+            int num=t.optInt("number",-1);
+            if(num<first || t.optBoolean("used") ||
+               prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false))continue;
+            expected=Math.min(expected,num);
+        }
+        return expected==Integer.MAX_VALUE?-1:expected;
+    }
+    public synchronized JSONArray inventorySummaries(){
+        JSONArray result=new JSONArray();
+        String current=eventId();
+        for(String eid:importedRaw.keySet())try{
+            selectEvent(eid);
+            int used=0;
+            for(JSONObject t:tickets.values())
+                if(t.optBoolean("used")||
+                   prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false))used++;
+            result.put(new JSONObject()
+                .put("id",eid).put("name",event().optString("name"))
+                .put("start_time",event().optString("start_time"))
+                .put("total",tickets.size()).put("used",used)
+                .put("available",tickets.size()-used)
+                .put("first_active",firstActive())
+                .put("next_expected",nextExpected()));
+        }catch(Exception ignored){}
+        if(!current.isEmpty())try{selectEvent(current);}catch(Exception ignored){}
+        return result;
     }
     public synchronized String eventId(){ return data==null?"":data.optJSONObject("event").optString("id"); }
     public synchronized JSONObject event(){ return data==null?null:data.optJSONObject("event"); }
@@ -181,12 +268,28 @@ public final class OfflineManager {
         return d;
     }
     public synchronized JSONObject validate(String qr,String event,String device,int start,int end) {
+        return validate(qr,event,device,start,end,false);
+    }
+    public synchronized JSONObject validate(String qr,String event,String device,int start,int end,
+                                            boolean acceptOutOfOrder) {
         try {
             JSONObject d=verifyQr(qr,event);
             int number=d.optInt("n",-1);
             if(number<start||number>end)throw new Exception("Entrada fuera del rango autorizado: "+start+"–"+end);
             String used="used_"+event+"_"+d.getString("id");
             if(prefs.getBoolean(used,false))throw new Exception("Esta entrada ya fue validada aquí");
+            int expected=nextExpected();
+            if(data!=null && "warn".equals(data.optString("sequence_mode","off")) &&
+               !acceptOutOfOrder && number!=expected) {
+                String msg=(number<firstActive()?
+                    "Ticket anterior al primero activo ("+firstActive()+").":
+                    "Se esperaba primero el ticket "+
+                    String.format(java.util.Locale.US,"%04d",expected)+".")+
+                    " Este es el "+String.format(java.util.Locale.US,"%04d",number)+
+                    ". ¿Confirmar entrada fuera de orden?";
+                return new JSONObject().put("status","warning").put("message",msg)
+                    .put("number",number).put("expected",expected);
+            }
             String accessTime=new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(new java.util.Date());
             if(!prefs.edit().putBoolean(used,true).putString("used_time_"+event+"_"+d.getString("id"),accessTime).commit())throw new Exception("No se pudo guardar el acceso");
             return new JSONObject().put("status","valid").put("message","ACCESO AUTORIZADO").put("number",number)
