@@ -653,7 +653,8 @@ public class MainActivity extends AppCompatActivity {
             try{
                 JSONObject event=offline.load(raw,true);
                 publicKey=offline.importedKey();
-                prefs.edit().putString("pubkey",publicKey).apply();
+                prefs.edit().putString("pubkey",publicKey)
+                    .putString("last_event",event.optString("id")).apply();
                 runOnUiThread(()->{
                     validationMode.setSelection(1);
                     setEvents(offline.importedEvents());
