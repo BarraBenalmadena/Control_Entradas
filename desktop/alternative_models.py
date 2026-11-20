@@ -290,8 +290,7 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
         (S+10,490,T-9,548),32,accent,2,12)
     if index==3:
         smooth((L+4,554),((L+R)/2,534),(R-7,557),"#94d3f8",3)
-    d.rounded_rectangle(rect(5,5,1075,571),radius=max(2,Y(14)),
-                        outline=accent,width=max(2,Y(3)))
+    d.rounded_rectangle(rect(5,5,1075,571),radius=max(7,Y(22)),
+                        outline=accent,width=max(3,Y(6)))
     if color_preview:return im
-    return im.convert("L").convert(
-        "1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
+    return tp.render_light_thermal_ticket(im,design)
