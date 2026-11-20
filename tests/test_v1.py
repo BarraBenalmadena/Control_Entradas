@@ -51,16 +51,17 @@ class V1Tests(unittest.TestCase):
             self.assertTrue(item['reserved'])
             self.assertIn('Fila 01',item['seat'])
 
-    def test_latest_print_batch_replaces_previous_export(self):
-        eid=app.create_event('Último lote','2027-03-01T20:00','libre',50)
+    def test_reprints_keep_complete_signed_inventory(self):
+        eid=app.create_event('Lotes acumulados','2027-03-01T20:00','libre',50)
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'entradas.json'
             app.record_print_submission(eid,range(1,51))
             self.assertEqual(app.export_offline_event(eid,path),50)
             app.record_print_submission(eid,range(41,51))
-            self.assertEqual(app.export_offline_event(eid,path),10)
+            # Reimprimir no elimina del JSON los primeros cuarenta.
+            self.assertEqual(app.export_offline_event(eid,path),50)
             latest=app.verify_offline_file(path)['tickets']
-            self.assertEqual([x['number'] for x in latest],list(range(41,51)))
+            self.assertEqual([x['number'] for x in latest],list(range(1,51)))
 
     def test_sixteen_templates_and_qr(self):
         self.assertEqual(len(ticket_printer.TEMPLATES),36)
