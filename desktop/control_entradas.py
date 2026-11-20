@@ -282,7 +282,8 @@ def record_print_submission(event_id: str, numbers):
         db.commit()
 
 
-def export_offline_event(event_id: str, target: Path):
+def export_offline_event(event_id: str, target: Path, first_active: int | None = None,
+                         sequence_mode: str = 'warn'):
     """Signed offline snapshot. Private key never leaves Windows.
 
     Authoritative for one scanner only; for multiple phones coordinate via a
@@ -299,7 +300,14 @@ def export_offline_event(event_id: str, target: Path):
         placeholders=','.join('?' for _ in numbers)
         tickets=db.execute(f"SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? AND t.number IN ({placeholders}) ORDER BY t.number",(event_id,*numbers)).fetchall()
     if not tickets: raise ValueError('No hay entradas enviadas a impresión. Imprime primero y luego exporta este JSON.')
+    valid_numbers={int(t['number']) for t in tickets}
+    if first_active is None:first_active=min(valid_numbers)
+    if first_active not in valid_numbers:
+        raise ValueError('El primer ticket activo debe pertenecer al lote que exportas.')
+    if sequence_mode not in ('warn','off'):
+        raise ValueError('Modo de comprobación de orden no reconocido.')
     data={'version':1,'created_at':iso_now(),'event':dict(event),
+          'first_active':first_active,'sequence_mode':sequence_mode,
           'tickets':[{'id':t['id'],'number':t['number'],'seat':t['seat_label'],
                       'used':bool(t['used_at']),'used_at':t['used_at'],'reserved':bool(t['reserved']),
                       'submitted_to_printer':bool(t['printed_at'])} for t in tickets]}
@@ -1732,19 +1740,60 @@ def launch_gui():
         if not eid:return
         ev=next((e for e in list_events() if e['id']==eid),None)
         if not ev:return
-        path=filedialog.asksaveasfilename(title='Exportar función firmada para Android',
-                   initialfile='Entradas_Impresas.json',defaultextension='.json',filetypes=[('Archivo JSON','*.json')])
-        if not path:return
-        try:
-            total=export_offline_event(eid,Path(path))
-            messagebox.showinfo('Archivo firmado exportado',
-                f'Exportación terminada: {total} entradas enviadas a impresión.\n\nArchivo: {path}\n\n'
-                'Importa este JSON en cada móvil mediante la APK.\n'
-                'Si escaneas en varios móviles SIN conexión entre ellos, asigna rangos distintos: '
-                'no pueden detectar duplicados entre dispositivos aislados.\n\n'
-                'No compartas este archivo públicamente: contiene el inventario de entradas.',parent=root)
-        except Exception as ex:
-            messagebox.showerror('No se pudo exportar JSON',str(ex),parent=root)
+        with connect() as db:
+            batch=db.execute(
+                "SELECT numbers_json FROM event_last_print_batch WHERE event_id=?",
+                (eid,)).fetchone()
+        if not batch:
+            messagebox.showwarning('JSON para APK',
+                'Primero envía las entradas a impresión: el JSON contiene '
+                'los números del último lote enviado.',parent=root)
+            return
+        available=sorted(set(json.loads(batch['numbers_json'])))
+        if not available:return
+        choose=tk.Toplevel(root)
+        choose.title('Exportar JSON firmado · primer ticket activo')
+        choose.transient(root);choose.grab_set();choose.resizable(False,False)
+        main=ttk.Frame(choose,padding=15);main.pack(fill='both',expand=True)
+        ttk.Label(main,text=f"Función: {ev['name']}",
+                  font=('Segoe UI',11,'bold')).pack(anchor='w',pady=(0,8))
+        ttk.Label(main,text=f"{len(available)} tickets del lote: "
+                  f"{available[0]:04d}–{available[-1]:04d}.",
+                  wraplength=490).pack(anchor='w')
+        ttk.Label(main,text="Primer ticket activo del lote:").pack(anchor='w',pady=(10,3))
+        first=tk.StringVar(value=str(available[0]))
+        ttk.Combobox(main,textvariable=first,values=[str(v) for v in available],
+                     width=16,state='readonly').pack(anchor='w')
+        warn=tk.BooleanVar(value=True)
+        ttk.Checkbutton(main,text="Avisar si llega otro número antes del siguiente esperado",
+                        variable=warn).pack(anchor='w',pady=(10,4))
+        ttk.Label(main,text='La APK no marcará como usada una entrada adelantada '
+                  'hasta que confirmes la excepción. Cada función tiene su propio orden.',
+                  wraplength=500).pack(anchor='w')
+        def export_now():
+            try:
+                chosen=int(first.get())
+                if chosen not in available:raise ValueError('Selecciona un número del lote.')
+                path=filedialog.asksaveasfilename(parent=choose,
+                    title='Guardar función firmada para Android',
+                    initialfile=f"Entradas_{eid[:8]}_desde_{chosen:04d}.json",
+                    defaultextension='.json',filetypes=[('Archivo JSON','*.json')])
+                if not path:return
+                total=export_offline_event(eid,Path(path),chosen,
+                                           'warn' if warn.get() else 'off')
+                choose.destroy()
+                messagebox.showinfo('Archivo firmado exportado',
+                    f'Función: {ev["name"]}\nExportadas: {total}\n'
+                    f'Primera activa: {chosen:04d}\n\n'
+                    'La APK permitirá conservar funciones de otros días o sesiones. '
+                    'Si utilizas lectores desconectados entre sí, distribuye rangos '
+                    'separados para evitar dobles accesos.',parent=root)
+            except Exception as error:
+                messagebox.showerror('Exportación JSON',str(error),parent=choose)
+        bar=ttk.Frame(main);bar.pack(fill='x',pady=(12,0))
+        ttk.Button(bar,text='Cancelar',command=choose.destroy).pack(side='right',padx=5)
+        ttk.Button(bar,text='EXPORTAR JSON',command=export_now,
+                   style='Action.TButton').pack(side='right')
 
     def merge_offline_accesses():
         path=filedialog.askopenfilename(title='Importar accesos registrados en Android',filetypes=[('Registro JSON','*.json')])
