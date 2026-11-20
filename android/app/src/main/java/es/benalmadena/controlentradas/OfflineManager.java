@@ -24,6 +24,8 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -119,10 +121,12 @@ public final class OfflineManager {
                 out.write(raw.getBytes(StandardCharsets.UTF_8));
                 out.getFD().sync();
             }
-            if(dest.isFile()&&!dest.delete())
-                throw new Exception("No se pudo actualizar el JSON existente");
-            if(!temp.renameTo(dest))
-                throw new Exception("No se pudo conservar el JSON firmado");
+            try {
+                Files.move(temp.toPath(),dest.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            }catch(java.nio.file.AtomicMoveNotSupportedException ex){
+                Files.move(temp.toPath(),dest.toPath(),StandardCopyOption.REPLACE_EXISTING);
+            }
             if(!prefs.edit().putString("trusted_key",pub)
                 .putString("inventory_payload_"+event.getString("id"),encoded)
                 .putString("active_event",event.getString("id")).commit())
@@ -149,13 +153,17 @@ public final class OfflineManager {
         return true;
     }
     public synchronized JSONArray importedEvents() {
-        JSONArray events=new JSONArray();
+        java.util.ArrayList<JSONObject> ordered=new java.util.ArrayList<>();
         for(Map.Entry<String,String> pair:importedRaw.entrySet())try{
             JSONObject pack=new JSONObject(pair.getValue());
             JSONObject envelope=new JSONObject(new String(
                 decodeUrl(pack.getString("payload")),StandardCharsets.UTF_8));
-            events.put(envelope.getJSONObject("event"));
+            ordered.add(envelope.getJSONObject("event"));
         }catch(Exception ignored){}
+        ordered.sort((x,y)->x.optString("start_time").compareTo(
+                                  y.optString("start_time")));
+        JSONArray events=new JSONArray();
+        for(JSONObject ev:ordered)events.put(ev);
         return events;
     }
     public synchronized int firstActive(){
@@ -164,7 +172,10 @@ public final class OfflineManager {
         for(JSONObject t:tickets.values())
             minimum=Math.min(minimum,t.optInt("number",Integer.MAX_VALUE));
         int fallback=data.optInt("first_active",minimum==Integer.MAX_VALUE?1:minimum);
-        return prefs.getInt("first_active_"+eventId(),fallback);
+        int chosen=prefs.getInt("first_active_"+eventId(),fallback);
+        for(JSONObject t:tickets.values())
+            if(t.optInt("number")==chosen)return chosen;
+        return fallback;
     }
     public synchronized void setFirstActive(int number) throws Exception {
         if(data==null)throw new Exception("Selecciona una función importada");
@@ -189,23 +200,52 @@ public final class OfflineManager {
     }
     public synchronized JSONArray inventorySummaries(){
         JSONArray result=new JSONArray();
-        String current=eventId();
-        for(String eid:importedRaw.keySet())try{
-            selectEvent(eid);
-            int used=0;
-            for(JSONObject t:tickets.values())
-                if(t.optBoolean("used")||
-                   prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false))used++;
+        for(Map.Entry<String,String> entry:importedRaw.entrySet())try{
+            JSONObject decoded=new JSONObject(new String(
+                decodeUrl(new JSONObject(entry.getValue()).getString("payload")),
+                StandardCharsets.UTF_8));
+            JSONObject ev=decoded.getJSONObject("event");
+            JSONArray list=decoded.getJSONArray("tickets");
+            String eid=ev.getString("id");
+            int used=0,min=Integer.MAX_VALUE,next=Integer.MAX_VALUE;
+            for(int i=0;i<list.length();i++){
+                JSONObject t=list.getJSONObject(i);
+                int number=t.optInt("number");
+                min=Math.min(min,number);
+            }
+            int first=prefs.getInt("first_active_"+eid,
+                decoded.optInt("first_active",min==Integer.MAX_VALUE?1:min));
+            boolean exists=false;
+            for(int i=0;i<list.length();i++){
+                JSONObject t=list.getJSONObject(i);
+                if(t.optInt("number")==first){exists=true;break;}
+            }
+            if(!exists)first=decoded.optInt("first_active",
+                                 min==Integer.MAX_VALUE?1:min);
+            for(int i=0;i<list.length();i++){
+                JSONObject t=list.getJSONObject(i);
+                boolean scanned=t.optBoolean("used") ||
+                    prefs.getBoolean("used_"+eid+"_"+t.optString("id"),false);
+                if(scanned)used++;
+                else if(t.optInt("number")>=first)
+                    next=Math.min(next,t.optInt("number"));
+            }
             result.put(new JSONObject()
-                .put("id",eid).put("name",event().optString("name"))
-                .put("start_time",event().optString("start_time"))
-                .put("total",tickets.size()).put("used",used)
-                .put("available",tickets.size()-used)
-                .put("first_active",firstActive())
-                .put("next_expected",nextExpected()));
+                .put("id",eid).put("name",ev.optString("name"))
+                .put("start_time",ev.optString("start_time"))
+                .put("total",list.length()).put("used",used)
+                .put("available",list.length()-used)
+                .put("first_active",first)
+                .put("next_expected",next==Integer.MAX_VALUE?-1:next));
         }catch(Exception ignored){}
-        if(!current.isEmpty())try{selectEvent(current);}catch(Exception ignored){}
-        return result;
+        // Sin mutar la función activa ni los números pendientes.
+        java.util.ArrayList<JSONObject> ordered=new java.util.ArrayList<>();
+        for(int i=0;i<result.length();i++)ordered.add(result.optJSONObject(i));
+        ordered.sort((x,y)->x.optString("start_time").compareTo(
+                            y.optString("start_time")));
+        JSONArray sorted=new JSONArray();
+        for(JSONObject item:ordered)sorted.put(item);
+        return sorted;
     }
     public synchronized String eventId(){ return data==null?"":data.optJSONObject("event").optString("id"); }
     public synchronized JSONObject event(){ return data==null?null:data.optJSONObject("event"); }
@@ -261,7 +301,20 @@ public final class OfflineManager {
         validator.update(parts[1].getBytes(StandardCharsets.US_ASCII));
         if(!validator.verify(decodeUrl(parts[2])))throw new Exception("QR falsificado");
         JSONObject d=new JSONObject(new String(decodeUrl(parts[1]),StandardCharsets.UTF_8));
-        if(!event.equals(d.optString("e"))||!event.equals(eventId()))throw new Exception("La entrada pertenece a otra función");
+        if(!event.equals(d.optString("e"))||!event.equals(eventId())){
+            String other=d.optString("e");
+            String label="otra función";
+            String raw=importedRaw.get(other);
+            if(raw!=null)try{
+                JSONObject data=new JSONObject(new String(
+                    decodeUrl(new JSONObject(raw).getString("payload")),
+                    StandardCharsets.UTF_8));
+                JSONObject ev=data.getJSONObject("event");
+                label=ev.optString("name")+" · "+ev.optString("start_time");
+            }catch(Exception ignored){}
+            throw new Exception("ENTRADA DE OTRA FUNCIÓN: "+label+
+                ". Selecciona la sesión correcta antes de validarla.");
+        }
         JSONObject enrolled=tickets.get(d.optString("id"));
         if(enrolled==null||enrolled.optInt("number")!=d.optInt("n"))throw new Exception("QR no incluido en el evento importado");
         if(enrolled.optBoolean("used"))throw new Exception("Entrada ya utilizada al exportar el evento");
