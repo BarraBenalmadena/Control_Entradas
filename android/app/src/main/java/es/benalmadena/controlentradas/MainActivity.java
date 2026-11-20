@@ -466,7 +466,8 @@ public class MainActivity extends AppCompatActivity {
             JSONObject f=summaries.optJSONObject(i);
             if(f==null)continue;
             pending+=f.optInt("available");
-            content.append(f.optString("start_time").replace("T"," "))
+            content.append("FECHA Y HORA: ")
+                .append(displayEventDate(f.optString("start_time")))
                 .append("\n").append(f.optString("name"))
                 .append("\nImportadas: ").append(f.optInt("total"))
                 .append(" · Utilizadas: ").append(f.optInt("used"))
@@ -544,7 +545,8 @@ public class MainActivity extends AppCompatActivity {
             JSONObject t=items.optJSONObject(i);
             if(t!=null && t.optBoolean("used"))used++;
         }
-        counterView.setText(offline.event().optString("name")+
+        counterView.setText(displayEventDate(offline.event().optString("start_time"))+
+                "\n"+offline.event().optString("name")+
                 "\nImportadas: "+items.length()+" · Usadas: "+used+
                 " · Disponibles: "+(items.length()-used)+
                 "\nPrimera activa: "+offline.firstActive()+
@@ -700,6 +702,17 @@ public class MainActivity extends AppCompatActivity {
         }finally{c.disconnect();}
     }
 
+    private String displayEventDate(String iso){
+        try {
+            String normalized=iso.replace('T',' ');
+            if(normalized.length()>=16)
+                return normalized.substring(8,10)+"/"+
+                       normalized.substring(5,7)+"/"+
+                       normalized.substring(0,4)+" · "+
+                       normalized.substring(11,16);
+        }catch(Exception ignored){}
+        return iso;
+    }
     private void setEvents(JSONArray rows) {
         events = rows;
         eventIds.clear();
@@ -711,11 +724,34 @@ public class MainActivity extends AppCompatActivity {
             if (ev == null) continue;
             String id = ev.optString("id");
             eventIds.add(id);
-            labels.add(ev.optString("name") + " · " + ev.optString("start_time").replace('T',' ') + " · " + ev.optString("mode"));
+            labels.add(displayEventDate(ev.optString("start_time")) +
+                "\n" + ev.optString("name") + " · " + ev.optString("mode"));
             if (previous.equals(id)) selected = eventIds.size()-1;
         }
         if(labels.isEmpty()) labels.add("Sin funciones disponibles");
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+            this,android.R.layout.simple_spinner_dropdown_item,labels){
+            private View expand(View item) {
+                if(item instanceof TextView){
+                    TextView t=(TextView)item;
+                    t.setSingleLine(false);
+                    t.setMaxLines(3);
+                    t.setEllipsize(null);
+                    t.setTextSize(16);
+                    t.setPadding(dp(12),dp(9),dp(12),dp(9));
+                    t.setMinHeight(dp(64));
+                }
+                return item;
+            }
+            @Override public View getView(int position,View convertView,
+                                          ViewGroup parent){
+                return expand(super.getView(position,convertView,parent));
+            }
+            @Override public View getDropDownView(int position,View convertView,
+                                                  ViewGroup parent){
+                return expand(super.getDropDownView(position,convertView,parent));
+            }
+        };
         eventSpinner.setAdapter(adapter);
         if(!eventIds.isEmpty()) eventSpinner.setSelection(selected);
         eventSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -731,9 +767,10 @@ public class MainActivity extends AppCompatActivity {
                                 offlineStatus.setText("La función seleccionada no está importada "
                                     +"como JSON firmado. Selecciona una función importada.");
                             }else{
-                                offlineStatus.setText("FUNCIÓN ACTIVA: "+
-                                   offline.event().optString("name")+
-                                   " · Primera entrada "+offline.firstActive()+
+                                offlineStatus.setText("FUNCIÓN ACTIVA:\n"+
+                                   displayEventDate(offline.event().optString("start_time"))+
+                                   "\n"+offline.event().optString("name")+
+                                   "\nPrimera entrada "+offline.firstActive()+
                                    " · Siguiente "+offline.nextExpected());
                             }
                         }catch(Exception ex){showResult("ERROR AL ELEGIR FUNCIÓN: "+ex.getMessage(),Color.RED);}
@@ -946,40 +983,15 @@ public class MainActivity extends AppCompatActivity {
                     response=coordinatorRequest(qr,event,host,secret);
                 }else throw new Exception("Modo de validación desconocido");
                 String status=response.optString("status","invalid");
+                String sequenceWarning="";
                 if("warning".equals(status) && (mode==1 || mode==2)){
-                    final int fromWarn=(mode==1 && !first.isEmpty())?Integer.parseInt(first):1;
-                    final int toWarn=(mode==1 && !last.isEmpty())?Integer.parseInt(last):Integer.MAX_VALUE;
-                    final String warning=response.optString("message",
-                        "Entrada fuera del orden establecido.");
-                    sequenceDialogOpen.set(true);
-                    runOnUiThread(()->new AlertDialog.Builder(this)
-                        .setTitle("ORDEN DE ACCESO · COMPROBAR")
-                        .setMessage(warning+"\n\nLa entrada todavía NO está validada.")
-                        .setNegativeButton("CANCELAR",(d,w)->{
-                            sequenceDialogOpen.set(false);
-                            showResult("ENTRADA NO VALIDADA · FUERA DE ORDEN",Color.RED);
-                            scanFeedback(false);
-                        })
-                        .setPositiveButton("VALIDAR DE TODAS FORMAS",(d,w)->{
-                            executor.execute(()->{
-                                JSONObject accepted=offline.validate(qr,event,deviceId,
-                                    fromWarn,toWarn,true);
-                                boolean ok="valid".equals(accepted.optString("status"));
-                                runOnUiThread(()->{
-                                    sequenceDialogOpen.set(false);
-                                    showResult(ok?"ACCESO AUTORIZADO POR EXCEPCIÓN\nN.º "+
-                                        accepted.optInt("number"):
-                                        "NO AUTORIZADO\n"+accepted.optString("message"),
-                                        ok?Color.rgb(20,122,71):Color.RED);
-                                    scanFeedback(ok);
-                                    say(ok?"Acceso autorizado.":"Entrada no autorizada.");
-                                    updateOfflineCounter();
-                                });
-                            });
-                        })
-                        .setOnCancelListener(d->sequenceDialogOpen.set(false))
-                        .show());
-                    return;
+                    // Modo de acceso continuo: el orden genera un aviso visual,
+                    // nunca un diálogo ni una segunda pulsación obligatoria.
+                    sequenceWarning=response.optString("message","Entrada fuera de orden");
+                    int fromWarn=(mode==1 && !first.isEmpty())?Integer.parseInt(first):1;
+                    int toWarn=(mode==1 && !last.isEmpty())?Integer.parseInt(last):Integer.MAX_VALUE;
+                    response=offline.validate(qr,event,deviceId,fromWarn,toWarn,true);
+                    status=response.optString("status","invalid");
                 }
                 String message=response.isNull("message")?"":response.optString("message","");
                 String seat=response.isNull("seat")?"":response.optString("seat","");
@@ -990,7 +1002,20 @@ public class MainActivity extends AppCompatActivity {
                     (seat.isEmpty()?"":"\n"+seat);
                 String finished=message;
                 boolean accepted="valid".equals(status);
-                runOnUiThread(()->{showResult((accepted?"AUTORIZADO\n":"NO AUTORIZADO\n")+finished,accepted?Color.rgb(20,122,71):Color.RED);scanFeedback(accepted);say(accepted?"Entrada autorizada.":"Entrada no autorizada. "+messageForVoice(finished));updateOfflineCounter();zoomRatio=1.0f;applyCameraZoom();});
+                final String orderNote=sequenceWarning;
+                runOnUiThread(()->{
+                    String prefix=accepted?(orderNote.isEmpty()?"AUTORIZADO\n":
+                        "AUTORIZADO · FUERA DE ORDEN\n"):"NO AUTORIZADO\n";
+                    showResult(prefix+finished+
+                        (accepted && !orderNote.isEmpty()?"\nAVISO: "+orderNote:""),
+                        accepted?Color.rgb(20,122,71):Color.RED);
+                    scanFeedback(accepted);
+                    say(accepted?(orderNote.isEmpty()?"Entrada autorizada.":
+                        "Entrada autorizada fuera de orden."):
+                        "Entrada no autorizada. "+messageForVoice(finished));
+                    updateOfflineCounter();
+                    zoomRatio=1.0f;applyCameraZoom();
+                });
             }catch(Exception ex){
                 runOnUiThread(()->{String detail=ex.getMessage()==null?"Error de validación":ex.getMessage();showResult("NO AUTORIZADO\n"+detail,Color.RED);scanFeedback(false);say("Entrada no autorizada.");});
             }finally{runOnUiThread(()->analyzing.set(false));}
