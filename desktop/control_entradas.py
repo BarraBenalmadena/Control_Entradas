@@ -1464,6 +1464,7 @@ def launch_gui():
                 visual.grid(row=0,column=0,sticky='nsew')
                 current=tk.IntVar(value=numbers[0])
                 current_label=tk.StringVar()
+                thermal_preview=tk.BooleanVar(value=True)
                 busy=tk.BooleanVar(value=False)
                 ttk.Label(frame,textvariable=current_label,
                           font=('Segoe UI',11,'bold')).grid(row=1,column=0,sticky='ew',pady=5)
@@ -1473,14 +1474,17 @@ def launch_gui():
                     ev,tkdata=get_ticket(event_id,number)
                     image=ticket_printer.render_landscape_ticket(
                         ev,tkdata,int(roll.get()),d,
-                        length_mm=ticket_length(),color_preview=True)
+                        length_mm=ticket_length(),
+                        color_preview=not thermal_preview.get())
                     image.thumbnail((min(1110,sw-90),min(575,sh-235)),
                                     Image.Resampling.LANCZOS)
                     photo=ImageTk.PhotoImage(image)
                     visual.configure(image=photo)
                     visual.image=photo
                     current_label.set(f'Entrada Nº {number:04d} de {event["capacity"]} · '
-                       'Vista en color; impresión térmica clara en B/N.')
+                       ('Así saldrá en la térmica (B/N económico).'
+                        if thermal_preview.get() else
+                        'Vista decorativa en color; la impresora utilizará B/N claro.'))
                     back.configure(state='normal' if number>1 else 'disabled')
                     forward.configure(state='normal' if number<event['capacity'] else 'disabled')
                 def change(step):
@@ -1554,6 +1558,8 @@ def launch_gui():
                 forward=ttk.Button(controls,text='SIGUIENTE ▶',
                                    command=lambda:change(1))
                 forward.pack(side='left',padx=4)
+                ttk.Checkbutton(controls,text='VER COMO SALE EN TÉRMICA',
+                    variable=thermal_preview,command=show_one).pack(side='left',padx=4)
                 print_one_button=ttk.Button(
                     controls,text='IMPRIMIR ESTA ENTRADA · ZYWELL',
                     command=print_one,style='Action.TButton')
