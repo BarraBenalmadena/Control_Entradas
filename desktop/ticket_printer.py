@@ -184,11 +184,14 @@ def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Im
     # En el vecindario de un bloque azul/burdeos oscuro, el fondo queda
     # blanco y las letras que originalmente eran blancas pasan a negro.
     area=grey.filter(ImageFilter.BoxBlur(max(5,round(h/72))))
-    filled=area.point(lambda value:255 if value<125 else 0)
-    neg=ImageOps.invert(grey)
-    mixed=Image.composite(neg,grey,filled)
-    # Umbral firme: pocos puntos negros frente a extensiones de gris.
-    result=mixed.point(lambda value:0 if value<135 else 255).convert("RGB")
+    filled=area.point(lambda value:255 if value<182 else 0)
+    normal=grey.point(lambda value:0 if value<135 else 255)
+    # Si el fondo ocupa una zona oscura amplia, invertir por semántica:
+    # el color sólido pasa a blanco y SOLO las letras blancas pasan a negro.
+    # No invertir simplemente grises: un fondo dorado de gris ~120
+    # volvería a quedar negro en la térmica.
+    inverted=grey.point(lambda value:0 if value>193 else 255)
+    result=Image.composite(inverted,normal,filled).convert("RGB")
     model=design.get("plantilla")
     try:index=MODELS.index(model)
     except ValueError:index=0
