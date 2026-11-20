@@ -103,6 +103,62 @@ class ControlEntradasTests(unittest.TestCase):
                  "WHERE event_id=?",(eid,)).fetchone()[0],3)
         self.assertEqual(app.validate(new["qr"],eid,"m1")["status"],"valid")
 
+    def test_first_active_and_sequence_policy_are_inside_signed_json(self):
+        event_id=app.create_event("Dos pases", "2027-12-22T18:00","libre",5)
+        app.record_print_submission(event_id,[1,2,3,4,5])
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as folder:
+            p=Path(folder)/"primera_activa.json"
+            app.export_offline_event(event_id,p,first_active=3,sequence_mode="warn")
+            decoded=app.verify_offline_file(p)
+            self.assertEqual(decoded["first_active"],3)
+            self.assertEqual(decoded["sequence_mode"],"warn")
+            self.assertEqual(len(decoded["tickets"]),5)
+            other=Path(folder)/"segundo_turno.json"
+            app.export_offline_event(event_id,other,first_active=1,
+                                     sequence_mode="off")
+            self.assertEqual(app.verify_offline_file(other)["sequence_mode"],"off")
+            with self.assertRaises(ValueError):
+                app.export_offline_event(event_id,p,first_active=8)
+
+    def test_thermal_light_ticket_avoids_dark_fills_preserves_qr_for_all_models(self):
+        from four_models import MODELS
+        from PIL import Image
+        from tempfile import TemporaryDirectory
+        eid=app.create_event("Festival de invierno", "2027-12-22T20:00",
+                             "libre",1)
+        event,ticket=app.get_ticket(eid,1)
+        with TemporaryDirectory() as folder:
+            poster=Path(folder)/"cartel.jpg"
+            Image.new("RGB",(480,850),(45,20,61)).save(poster)
+            for index,model in enumerate(MODELS):
+                cfg={"plantilla":model,"poster":str(poster)}
+                preview=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,cfg,length_mm=165,color_preview=True)
+                printed=ticket_printer.render_landscape_ticket(
+                    event,ticket,80,cfg,length_mm=165,color_preview=False)
+                self.assertEqual(printed.size,preview.size)
+                # El filtro térmico no imprime grandes masas oscuras en los
+                # recuadros de control de acceso y mantiene blanco el fondo.
+                if index==4:
+                    access=(10,245)
+                else:
+                    access=(830,1075)
+                sx=lambda v:round(v*printed.width/1080)
+                control=printed.crop((sx(access[0]+10),18,
+                                      sx(access[1]-10),102))
+                blacks=sum(r<40 for r,g,b in control.getdata())
+                self.assertLess(blacks,control.width*control.height*.43,model)
+                self.assertEqual(printed.getpixel((0,0)),(255,255,255))
+                self.assertEqual(printed.getpixel((printed.width-1,0)),
+                                 (255,255,255))
+                # QR intacto en área de máxima legibilidad.
+                region=(sx(access[0]+6),164,sx(access[1]-6),448)
+                expected=preview.crop(region).convert("L").point(
+                    lambda v:0 if v<128 else 255).convert("RGB")
+                self.assertEqual(printed.crop(region).tobytes(),
+                                 expected.tobytes(),model)
+
     def test_code128_fallback_and_double_use(self):
         e=app.create_event("Acceso alternativo","2027-04-12T19:00","libre",2)
         event,ticket=app.get_ticket(e,1)
