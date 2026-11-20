@@ -1449,20 +1449,118 @@ def launch_gui():
             if not numbers:return
             try:
                 d=current_design(save=True)
-                ev,tkdata=get_ticket(event_id,numbers[0])
-                image=ticket_printer.render_landscape_ticket(ev,tkdata,int(roll.get()),d,
-                                              length_mm=ticket_length(),color_preview=True)
                 popup=tk.Toplevel(win)
-                popup.title(f'{d["plantilla"]} · Entrada {numbers[0]:04d}')
-                popup.geometry('1150x715')
-                fr=ttk.Frame(popup,padding=12);fr.pack(fill='both',expand=True)
-                image.thumbnail((1110,575))
-                photo=ImageTk.PhotoImage(image)
-                label=ttk.Label(fr,image=photo)
-                label.image=photo
-                label.pack(anchor='center',pady=12)
-                ttk.Label(fr,text='Vista previa a color; la ZYWELL imprimirá en blanco y negro.').pack()
-                ttk.Button(fr,text='Cerrar',command=popup.destroy).pack(pady=8)
+                popup.title('VISTA PREVIA · imprimir una entrada')
+                sw=popup.winfo_screenwidth();sh=popup.winfo_screenheight()
+                popup.geometry(f'{min(1220,sw-55)}x{min(750,sh-90)}')
+                popup.transient(win)
+                frame=ttk.Frame(popup,padding=9)
+                frame.pack(fill='both',expand=True)
+                frame.columnconfigure(0,weight=1)
+                frame.rowconfigure(0,weight=1)
+                visual=ttk.Label(frame,anchor='center')
+                visual.grid(row=0,column=0,sticky='nsew')
+                current=tk.IntVar(value=numbers[0])
+                current_label=tk.StringVar()
+                busy=tk.BooleanVar(value=False)
+                ttk.Label(frame,textvariable=current_label,
+                          font=('Segoe UI',11,'bold')).grid(row=1,column=0,sticky='ew',pady=5)
+                controls=ttk.Frame(frame);controls.grid(row=2,column=0,sticky='ew')
+                def show_one():
+                    number=current.get()
+                    ev,tkdata=get_ticket(event_id,number)
+                    image=ticket_printer.render_landscape_ticket(
+                        ev,tkdata,int(roll.get()),d,
+                        length_mm=ticket_length(),color_preview=True)
+                    image.thumbnail((min(1110,sw-90),min(575,sh-235)),
+                                    Image.Resampling.LANCZOS)
+                    photo=ImageTk.PhotoImage(image)
+                    visual.configure(image=photo)
+                    visual.image=photo
+                    current_label.set(f'Entrada Nº {number:04d} de {event["capacity"]} · '
+                       'Vista en color; impresión térmica clara en B/N.')
+                    back.configure(state='normal' if number>1 else 'disabled')
+                    forward.configure(state='normal' if number<event['capacity'] else 'disabled')
+                def change(step):
+                    if busy.get():return
+                    current.set(max(1,min(event['capacity'],current.get()+step)))
+                    show_one()
+                def save_one():
+                    number=current.get()
+                    dest=filedialog.asksaveasfilename(
+                        parent=popup,title='Guardar esta entrada',
+                        initialfile=f'Entrada_{number:04d}.pdf',
+                        defaultextension='.pdf',filetypes=[('PDF','*.pdf')])
+                    if not dest:return
+                    try:
+                        ev,tk=get_ticket(event_id,number)
+                        ticket_printer.export_single_pdf(
+                            ev,tk,Path(dest),int(roll.get()),d,
+                            length_mm=ticket_length())
+                        current_label.set(f'Entrada {number:04d} guardada: {dest}')
+                    except Exception as ex:
+                        messagebox.showerror('PDF individual',str(ex),parent=popup)
+                def print_one():
+                    number=current.get()
+                    if not printer.get():
+                        messagebox.showwarning('Impresora ZYWELL',
+                            'Selecciona la impresora en la pestaña Impresión por lotes.',
+                            parent=popup)
+                        return
+                    if not messagebox.askyesno('Impresión individual',
+                        f'¿Enviar SOLO la entrada {number:04d} a {printer.get()}? '
+                        'Se guardará como enviada a impresión, pero NO como utilizada.',
+                        parent=popup):return
+                    try:
+                        pair=get_ticket(event_id,number)
+                        specs=(printer.get(),int(roll.get()),bool(cut.get()),
+                               cut_type.get()=='Completo',feed_amount(),
+                               cut_mode.get(),ticket_length())
+                    except Exception as error:
+                        messagebox.showerror('Preparar impresión',str(error),parent=popup)
+                        return
+                    busy.set(True)
+                    print_one_button.configure(state='disabled')
+                    current_label.set(f'Enviando entrada {number:04d} a la impresora...')
+                    def worker():
+                        try:
+                            target,width,use_cut,full,feed_dots,mode,mm=specs
+                            job=ticket_printer.print_windows_escpos_batch(
+                                [pair],target,width,d,use_cut,
+                                full_cut=full,feed_dots=feed_dots,
+                                cut_mode=mode,length_mm=mm)
+                            record_print_submission(event_id,[number])
+                            def success():
+                                if not popup.winfo_exists():return
+                                busy.set(False);print_one_button.configure(state='normal')
+                                current_label.set(
+                                    f'Entrada {number:04d} enviada a la cola · Trabajo {job}. '
+                                    'Comprueba físicamente la salida.')
+                            popup.after(0,success)
+                        except Exception as error:
+                            reason=str(error)
+                            def failed():
+                                if not popup.winfo_exists():return
+                                busy.set(False);print_one_button.configure(state='normal')
+                                messagebox.showerror('Impresión individual',
+                                                     reason,parent=popup)
+                            popup.after(0,failed)
+                    threading.Thread(target=worker,daemon=True).start()
+                back=ttk.Button(controls,text='◀ ANTERIOR',
+                                command=lambda:change(-1))
+                back.pack(side='left',padx=4)
+                forward=ttk.Button(controls,text='SIGUIENTE ▶',
+                                   command=lambda:change(1))
+                forward.pack(side='left',padx=4)
+                print_one_button=ttk.Button(
+                    controls,text='IMPRIMIR ESTA ENTRADA · ZYWELL',
+                    command=print_one,style='Action.TButton')
+                print_one_button.pack(side='left',padx=5)
+                ttk.Button(controls,text='GUARDAR PDF INDIVIDUAL',
+                           command=save_one).pack(side='left',padx=5)
+                ttk.Button(controls,text='Cerrar',command=popup.destroy).pack(
+                    side='right',padx=4)
+                show_one()
             except Exception as ex:
                 messagebox.showerror('Vista previa',str(ex),parent=win)
         def gallery(collection='catalogo'):
