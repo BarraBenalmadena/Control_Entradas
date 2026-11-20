@@ -121,6 +121,23 @@ class ControlEntradasTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 app.export_offline_event(event_id,p,first_active=8)
 
+    def test_export_accumulates_all_printed_batches_for_same_event(self):
+        from tempfile import TemporaryDirectory
+        eid=app.create_event("Dos tandas del mismo día","2027-12-22T19:30","libre",8)
+        app.record_print_submission(eid,[1,2,3])
+        app.record_print_submission(eid,[5,6])
+        with TemporaryDirectory() as folder:
+            p=Path(folder)/"dos_tandas.json"
+            self.assertEqual(app.export_offline_event(eid,p,first_active=1),5)
+            payload=app.verify_offline_file(p)
+            self.assertEqual([t["number"] for t in payload["tickets"]],
+                             [1,2,3,5,6])
+            self.assertEqual(payload["first_active"],1)
+            self.assertTrue(all(t["submitted_to_printer"]
+                                for t in payload["tickets"]))
+            with self.assertRaises(ValueError):
+                app.export_offline_event(eid,p,first_active=4)
+
     def test_thermal_light_ticket_avoids_dark_fills_preserves_qr_for_all_models(self):
         from four_models import MODELS
         from PIL import Image
