@@ -13,7 +13,7 @@ android {
     buildTypes {
         debug { signingConfig signingConfigs.debug }
     }
-    defaultConfig { applicationId 'es.benalmadena.controlentradas'; minSdk 26; targetSdk 35; versionCode 44; versionName '2.24' }
+    defaultConfig { applicationId 'es.benalmadena.controlentradas'; minSdk 26; targetSdk 35; versionCode 45; versionName '2.25' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
