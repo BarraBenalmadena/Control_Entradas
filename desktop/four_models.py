@@ -434,8 +434,6 @@ def render(event, ticket, width_mm, design, length_mm, color_preview=False):
     # Perfil de ticket, nunca recuadro de lotería dentro de la fotografía.
     d=ImageDraw.Draw(art)
     d.rounded_rectangle(box((5,5,1076,570)),
-        radius=max(2,Y(13)),outline=accent,width=max(2,Y(4)))
-    if color_preview:
-        return art
-    return art.convert("L").convert(
-        "1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
+        radius=max(7,Y(22)),outline=accent,width=max(3,Y(6)))
+    if color_preview:return art
+    return tp.render_light_thermal_ticket(art,design)
