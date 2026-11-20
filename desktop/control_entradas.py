@@ -292,13 +292,15 @@ def export_offline_event(event_id: str, target: Path, first_active: int | None =
     with connect() as db:
         event=db.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if event is None:raise ValueError('La función no existe.')
-        batch=db.execute('SELECT numbers_json FROM event_last_print_batch WHERE event_id=?',(event_id,)).fetchone()
-        if not batch:
-            raise ValueError('No hay último lote registrado. Imprime las entradas y después exporta el JSON.')
-        numbers=json.loads(batch['numbers_json'])
-        if not numbers: raise ValueError('El último lote de impresión está vacío.')
-        placeholders=','.join('?' for _ in numbers)
-        tickets=db.execute(f"SELECT t.id,t.number,t.seat_label,t.used_at, COALESCE(s.reserved,0) reserved, p.submitted_at printed_at FROM tickets t LEFT JOIN seat_positions s ON s.ticket_id=t.id LEFT JOIN ticket_print_log p ON p.ticket_id=t.id WHERE t.event_id=? AND t.number IN ({placeholders}) ORDER BY t.number",(event_id,*numbers)).fetchall()
+        # Exportar todas las entradas enviadas a impresión, no solo el
+        # último lote: varios días, reimpresiones o tandas forman un
+        # inventario acumulado por función (id de evento independiente).
+        tickets=db.execute(
+            "SELECT t.id,t.number,t.seat_label,t.used_at, "
+            "COALESCE(s.reserved,0) reserved,p.submitted_at printed_at "
+            "FROM tickets t INNER JOIN ticket_print_log p ON p.ticket_id=t.id "
+            "LEFT JOIN seat_positions s ON s.ticket_id=t.id "
+            "WHERE t.event_id=? ORDER BY t.number",(event_id,)).fetchall()
     if not tickets: raise ValueError('No hay entradas enviadas a impresión. Imprime primero y luego exporta este JSON.')
     valid_numbers={int(t['number']) for t in tickets}
     if first_active is None:first_active=min(valid_numbers)
@@ -1839,15 +1841,15 @@ def launch_gui():
         ev=next((e for e in list_events() if e['id']==eid),None)
         if not ev:return
         with connect() as db:
-            batch=db.execute(
-                "SELECT numbers_json FROM event_last_print_batch WHERE event_id=?",
-                (eid,)).fetchone()
-        if not batch:
+            available=[row['number'] for row in db.execute(
+                "SELECT t.number FROM tickets t INNER JOIN ticket_print_log p "
+                "ON p.ticket_id=t.id WHERE t.event_id=? "
+                "ORDER BY t.number",(eid,)).fetchall()]
+        if not available:
             messagebox.showwarning('JSON para APK',
-                'Primero envía las entradas a impresión: el JSON contiene '
-                'los números del último lote enviado.',parent=root)
+                'Primero envía entradas a impresión: el JSON acumula '
+                'todas las entradas enviadas de esta función.',parent=root)
             return
-        available=sorted(set(json.loads(batch['numbers_json'])))
         if not available:return
         choose=tk.Toplevel(root)
         choose.title('Exportar JSON firmado · primer ticket activo')
@@ -1855,7 +1857,7 @@ def launch_gui():
         main=ttk.Frame(choose,padding=15);main.pack(fill='both',expand=True)
         ttk.Label(main,text=f"Función: {ev['name']}",
                   font=('Segoe UI',11,'bold')).pack(anchor='w',pady=(0,8))
-        ttk.Label(main,text=f"{len(available)} tickets del lote: "
+        ttk.Label(main,text=f"{len(available)} tickets impresos (acumulado): "
                   f"{available[0]:04d}–{available[-1]:04d}.",
                   wraplength=490).pack(anchor='w')
         ttk.Label(main,text="Primer ticket activo del lote:").pack(anchor='w',pady=(10,3))
