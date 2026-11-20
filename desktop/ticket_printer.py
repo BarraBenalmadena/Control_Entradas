@@ -273,7 +273,53 @@ def render_light_thermal_ticket(original: Image.Image, design: dict) -> Image.Im
     lighten=grey.crop(photo_box).point(
         lambda value:min(255,round(value*1.8+100)))
     photo_bw=lighten.convert("1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
-    result.paste(photo_bw,photo_box[:2])
+    # La imagen solo puede retocarse DENTRO de la silueta fotografica.
+    # Antes se pegaba un RECTÁNGULO completo; en modelos I–L tapaba las
+    # primeras letras del título, fecha y avisos (capturas v2.25).
+    import math
+    photo_mask=Image.new("L",(w,h),0)
+    photo_pen=ImageDraw.Draw(photo_mask)
+    def paint_photo_strip(y0,y1,fn):
+        for yy in range(y0,y1):
+            left,right=fn(yy)
+            if right>left:
+                photo_pen.line((sx(left),sy(yy),sx(right),sy(yy)),
+                               fill=255,width=max(1,sy(2)))
+    if index<4:
+        left_edge=(266,259,294,265)[index]
+        def old_edge(y):
+            return (253-37*math.sin(math.pi*y/576) if index==0
+                    else 249-36*y/576 if index==1
+                    else 312-135*y/576 if index==2
+                    else 248-51*math.sin(math.pi*y/576)+12*y/576)
+        paint_photo_strip(13,562,
+            lambda y:(11,min(old_edge(y),left_edge-9)))
+    elif index==4:
+        paint_photo_strip(13,561,
+            lambda y:(max(834+24*math.sin(math.pi*y/576),808+8),1070))
+    elif index==5:
+        paint_photo_strip(13,560,lambda y:(618,820))
+    elif index==6:
+        paint_photo_strip(13,560,
+            lambda y:(11,min(218 if y<13 else
+                218-((218-11)*.22)*min(1,y/230),218)))
+    elif index==7:
+        paint_photo_strip(13,560,
+            lambda y:(640+27*math.sin(math.pi*y/576),820))
+    else:
+        def reference_edge(y):
+            if index==8:return 112+155*max(0,math.sin(math.pi*y/576))**1.3
+            if index==9:return 135+116*max(0,math.sin(math.pi*y/576))
+            if index==10:return 180+120*y/576
+            return 147+120*y/576
+        min_text=315 if index==10 else 281
+        paint_photo_strip(13,562,
+            lambda y:(10,min(reference_edge(y),min_text-9)))
+    # Evitar que el retoque tape los dibujos hechos DESPUÉS de la foto.
+    # La máscara conserva las zonas de contenido y el talón QR independientes.
+    img_photo=Image.new("RGB",(w,h),"white")
+    img_photo.paste(photo_bw,photo_box[:2])
+    result.paste(img_photo,(0,0),photo_mask)
     # Code128 y QR: preservar negro puro, blanco puro y zona de silencio.
     code_rect=(sx(body[0]),sy(497),sx(body[1]),sy(557))
     code=grey.crop(code_rect).point(lambda p:0 if p<175 else 255).convert("RGB")
