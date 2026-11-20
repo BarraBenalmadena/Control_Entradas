@@ -1450,127 +1450,200 @@ def launch_gui():
             numbers=valid_range()
             if not numbers:return
             try:
-                d=current_design(save=True)
+                # La vista previa trabaja sobre una COPIA del diseño. Cambiar
+                # A–L aquí no altera el diseño guardado hasta pulsar APLICAR.
+                base=current_design(save=True)
                 popup=tk.Toplevel(win)
-                popup.title('VISTA PREVIA · imprimir una entrada')
+                popup.title('Vista previa · entrada y diseño · v2.26')
                 sw=popup.winfo_screenwidth();sh=popup.winfo_screenheight()
-                popup.geometry(f'{min(1220,sw-55)}x{min(750,sh-90)}')
+                pw=min(1230,sw-50);ph=min(790,sh-75)
+                popup.geometry(f'{pw}x{ph}')
+                popup.minsize(740,520)
                 popup.transient(win)
-                frame=ttk.Frame(popup,padding=9)
-                frame.pack(fill='both',expand=True)
-                frame.columnconfigure(0,weight=1)
-                frame.rowconfigure(0,weight=1)
-                visual=ttk.Label(frame,anchor='center')
-                visual.grid(row=0,column=0,sticky='nsew')
+                body=ttk.Frame(popup,padding=8)
+                body.pack(fill='both',expand=True)
+                body.columnconfigure(0,weight=1)
+                body.rowconfigure(0,weight=1)
+                picture=ttk.Label(body,anchor='center')
+                picture.grid(row=0,column=0,sticky='nsew')
                 current=tk.IntVar(value=numbers[0])
-                current_label=tk.StringVar()
-                thermal_preview=tk.BooleanVar(value=True)
+                chosen=tk.StringVar(value=base['plantilla'] if
+                                      base['plantilla'] in FOUR_MODELS else FOUR_MODELS[0])
+                number_box=tk.StringVar(value=str(numbers[0]))
+                thermal=tk.BooleanVar(value=True)
                 busy=tk.BooleanVar(value=False)
-                ttk.Label(frame,textvariable=current_label,
-                          font=('Segoe UI',11,'bold')).grid(row=1,column=0,sticky='ew',pady=5)
-                controls=ttk.Frame(frame);controls.grid(row=2,column=0,sticky='ew')
+                status=tk.StringVar(value='')
+                ttk.Label(body,textvariable=status,
+                          font=('Segoe UI',10,'bold'),wraplength=1050).grid(
+                              row=1,column=0,sticky='ew',pady=(3,5))
+                nav=ttk.Frame(body)
+                nav.grid(row=2,column=0,sticky='ew',pady=(1,4))
+                actions=ttk.Frame(body)
+                actions.grid(row=3,column=0,sticky='ew')
+                nav.columnconfigure(3,weight=1)
+                def displayed_design():
+                    return dict(base,plantilla=chosen.get())
                 def show_one():
-                    number=current.get()
-                    ev,tkdata=get_ticket(event_id,number)
-                    image=ticket_printer.render_landscape_ticket(
-                        ev,tkdata,int(roll.get()),d,
-                        length_mm=ticket_length(),
-                        color_preview=not thermal_preview.get())
-                    image.thumbnail((min(1110,sw-90),min(575,sh-235)),
-                                    Image.Resampling.LANCZOS)
-                    photo=ImageTk.PhotoImage(image)
-                    visual.configure(image=photo)
-                    visual.image=photo
-                    current_label.set(f'Entrada Nº {number:04d} de {event["capacity"]} · '
-                       ('Así saldrá en la térmica (B/N económico).'
-                        if thermal_preview.get() else
-                        'Vista decorativa en color; la impresora utilizará B/N claro.'))
-                    back.configure(state='normal' if number>1 else 'disabled')
-                    forward.configure(state='normal' if number<event['capacity'] else 'disabled')
-                def change(step):
+                    try:
+                        number=current.get()
+                        ev,tkdata=get_ticket(event_id,number)
+                        render_design=displayed_design()
+                        im=ticket_printer.render_landscape_ticket(
+                            ev,tkdata,int(roll.get()),render_design,
+                            length_mm=ticket_length(),
+                            color_preview=not thermal.get())
+                        im.thumbnail((max(420,pw-40),max(180,ph-205)),
+                                     Image.Resampling.LANCZOS)
+                        photo=ImageTk.PhotoImage(im)
+                        picture.configure(image=photo)
+                        picture.image=photo
+                        number_box.set(str(number))
+                        letter=chosen.get().split(' · ')[0]
+                        status.set(
+                            f'Entrada Nº {number:04d} / {event["capacity"]} · '
+                            f'Modelo {letter} · '
+                            + ('VISTA TÉRMICA EN BLANCO Y NEGRO'
+                               if thermal.get() else 'VISTA DECORATIVA EN COLOR'))
+                        previous.configure(state='normal' if number>1 else 'disabled')
+                        following.configure(state='normal' if
+                            number<event['capacity'] else 'disabled')
+                        model_before.configure(state='normal' if
+                            FOUR_MODELS.index(chosen.get())>0 else 'disabled')
+                        model_after.configure(state='normal' if
+                            FOUR_MODELS.index(chosen.get())<len(FOUR_MODELS)-1
+                            else 'disabled')
+                    except Exception as exc:
+                        import traceback
+                        traceback.print_exc()
+                        messagebox.showerror('Vista previa',str(exc),parent=popup)
+                def change_ticket(step):
                     if busy.get():return
                     current.set(max(1,min(event['capacity'],current.get()+step)))
                     show_one()
+                def go_to_ticket(*_):
+                    try:
+                        desired=int(number_box.get())
+                        if desired<1 or desired>event['capacity']:
+                            raise ValueError()
+                        current.set(desired)
+                        show_one()
+                    except ValueError:
+                        messagebox.showwarning('Número no válido',
+                            f'Introduce una entrada entre 1 y {event["capacity"]}.',
+                            parent=popup)
+                        number_box.set(str(current.get()))
+                def change_design(step):
+                    if busy.get():return
+                    index=FOUR_MODELS.index(chosen.get())
+                    chosen.set(FOUR_MODELS[max(0,min(len(FOUR_MODELS)-1,index+step))])
+                    show_one()
+                def apply_design():
+                    try:
+                        variables['plantilla'].set(chosen.get())
+                        current_design(save=True)
+                        base['plantilla']=chosen.get()
+                        note.set('Modelo '+chosen.get()+' guardado para esta función.')
+                        status.set('DISEÑO GUARDADO · '+chosen.get())
+                    except Exception as exc:
+                        messagebox.showerror('Guardar modelo',str(exc),parent=popup)
                 def save_one():
                     number=current.get()
-                    dest=filedialog.asksaveasfilename(
+                    target=filedialog.asksaveasfilename(
                         parent=popup,title='Guardar esta entrada',
                         initialfile=f'Entrada_{number:04d}.pdf',
                         defaultextension='.pdf',filetypes=[('PDF','*.pdf')])
-                    if not dest:return
+                    if not target:return
                     try:
-                        ev,tk=get_ticket(event_id,number)
+                        ev,tkdata=get_ticket(event_id,number)
                         ticket_printer.export_single_pdf(
-                            ev,tk,Path(dest),int(roll.get()),d,
-                            length_mm=ticket_length())
-                        current_label.set(f'Entrada {number:04d} guardada: {dest}')
-                    except Exception as ex:
-                        messagebox.showerror('PDF individual',str(ex),parent=popup)
+                            ev,tkdata,Path(target),int(roll.get()),
+                            displayed_design(),length_mm=ticket_length())
+                        status.set(f'PDF individual guardado: {target}')
+                    except Exception as exc:
+                        messagebox.showerror('PDF individual',str(exc),parent=popup)
                 def print_one():
                     number=current.get()
                     if not printer.get():
                         messagebox.showwarning('Impresora ZYWELL',
-                            'Selecciona la impresora en la pestaña Impresión por lotes.',
+                            'Selecciona primero la impresora en Impresión por lotes.',
                             parent=popup)
                         return
                     if not messagebox.askyesno('Impresión individual',
-                        f'¿Enviar SOLO la entrada {number:04d} a {printer.get()}? '
-                        'Se guardará como enviada a impresión, pero NO como utilizada.',
+                        f'¿Enviar SOLO la entrada {number:04d} a {printer.get()}?',
                         parent=popup):return
                     try:
                         pair=get_ticket(event_id,number)
-                        specs=(printer.get(),int(roll.get()),bool(cut.get()),
-                               cut_type.get()=='Completo',feed_amount(),
-                               cut_mode.get(),ticket_length())
-                    except Exception as error:
-                        messagebox.showerror('Preparar impresión',str(error),parent=popup)
+                        settings=(printer.get(),int(roll.get()),bool(cut.get()),
+                            cut_type.get()=='Completo',feed_amount(),
+                            cut_mode.get(),ticket_length())
+                        design_to_print=displayed_design()
+                    except Exception as exc:
+                        messagebox.showerror('Preparar impresión',str(exc),parent=popup)
                         return
                     busy.set(True)
-                    print_one_button.configure(state='disabled')
-                    current_label.set(f'Enviando entrada {number:04d} a la impresora...')
+                    print_button.configure(state='disabled')
+                    status.set(f'Enviando entrada {number:04d} a ZYWELL...')
                     def worker():
                         try:
-                            target,width,use_cut,full,feed_dots,mode,mm=specs
+                            target,width,use_cut,full,feed_dots,mode,mm=settings
                             job=ticket_printer.print_windows_escpos_batch(
-                                [pair],target,width,d,use_cut,
+                                [pair],target,width,design_to_print,use_cut,
                                 full_cut=full,feed_dots=feed_dots,
                                 cut_mode=mode,length_mm=mm)
                             record_print_submission(event_id,[number])
                             def success():
                                 if not popup.winfo_exists():return
-                                busy.set(False);print_one_button.configure(state='normal')
-                                current_label.set(
-                                    f'Entrada {number:04d} enviada a la cola · Trabajo {job}. '
-                                    'Comprueba físicamente la salida.')
+                                busy.set(False);print_button.configure(state='normal')
+                                status.set(f'Entrada {number:04d} enviada · '
+                                           f'Trabajo {job}. Comprueba la salida física.')
                             popup.after(0,success)
-                        except Exception as error:
-                            reason=str(error)
+                        except Exception as exc:
+                            reason=str(exc)
                             def failed():
                                 if not popup.winfo_exists():return
-                                busy.set(False);print_one_button.configure(state='normal')
+                                busy.set(False);print_button.configure(state='normal')
                                 messagebox.showerror('Impresión individual',
                                                      reason,parent=popup)
                             popup.after(0,failed)
                     threading.Thread(target=worker,daemon=True).start()
-                back=ttk.Button(controls,text='◀ ANTERIOR',
-                                command=lambda:change(-1))
-                back.pack(side='left',padx=4)
-                forward=ttk.Button(controls,text='SIGUIENTE ▶',
-                                   command=lambda:change(1))
-                forward.pack(side='left',padx=4)
-                ttk.Checkbutton(controls,text='VER COMO SALE EN TÉRMICA',
-                    variable=thermal_preview,command=show_one).pack(side='left',padx=4)
-                print_one_button=ttk.Button(
-                    controls,text='IMPRIMIR ESTA ENTRADA · ZYWELL',
+                previous=ttk.Button(nav,text='◀ ENTRADA',
+                                    command=lambda:change_ticket(-1))
+                previous.grid(row=0,column=0,padx=3)
+                ttk.Spinbox(nav,from_=1,to=event['capacity'],
+                            textvariable=number_box,width=7,
+                            command=go_to_ticket).grid(row=0,column=1,padx=3)
+                following=ttk.Button(nav,text='ENTRADA ▶',
+                                     command=lambda:change_ticket(1))
+                following.grid(row=0,column=2,padx=3)
+                model_before=ttk.Button(nav,text='◀ MODELO',
+                                        command=lambda:change_design(-1))
+                model_before.grid(row=0,column=4,padx=3)
+                selector=ttk.Combobox(nav,textvariable=chosen,
+                                      values=FOUR_MODELS,state='readonly',
+                                      width=37)
+                selector.grid(row=0,column=5,padx=3)
+                selector.bind('<<ComboboxSelected>>',lambda _:show_one())
+                model_after=ttk.Button(nav,text='MODELO ▶',
+                                       command=lambda:change_design(1))
+                model_after.grid(row=0,column=6,padx=3)
+                ttk.Checkbutton(actions,text='VER COMO SALE EN TÉRMICA',
+                    variable=thermal,command=show_one).pack(side='left',padx=3)
+                print_button=ttk.Button(actions,text='IMPRIMIR ESTA ENTRADA',
                     command=print_one,style='Action.TButton')
-                print_one_button.pack(side='left',padx=5)
-                ttk.Button(controls,text='GUARDAR PDF INDIVIDUAL',
-                           command=save_one).pack(side='left',padx=5)
-                ttk.Button(controls,text='Cerrar',command=popup.destroy).pack(
+                print_button.pack(side='left',padx=4)
+                ttk.Button(actions,text='GUARDAR PDF',
+                           command=save_one).pack(side='left',padx=3)
+                ttk.Button(actions,text='APLICAR ESTE DISEÑO',
+                           command=apply_design).pack(side='left',padx=3)
+                ttk.Button(actions,text='Cerrar',command=popup.destroy).pack(
                     side='right',padx=4)
+                popup.bind('<Left>',lambda _:change_ticket(-1))
+                popup.bind('<Right>',lambda _:change_ticket(1))
                 show_one()
-            except Exception as ex:
-                messagebox.showerror('Vista previa',str(ex),parent=win)
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                messagebox.showerror('Vista previa',str(exc),parent=win)
         def gallery(collection='catalogo'):
             """Galería de cuatro diseños por pantalla, sin arrastrar ventanas."""
             try:
