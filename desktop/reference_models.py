@@ -281,7 +281,6 @@ def render(event,ticket,width_mm,design,length_mm,color_preview=False):
     label=str(ticket.get("seat_label") or "").strip() or "1 PERSONA"
     txt(label,(stub_left+10,488,stub_right-9,548),
         31,"white" if dark else NAVY,2,13)
-    d.rounded_rectangle(b((5,5,1075,571)),radius=max(1,Y(9)),
-        outline=GOLD if variant!=1 else NAVY,width=max(2,Y(4)))
-    return img if color_preview else img.convert("L").convert(
-        "1",dither=Image.Dither.FLOYDSTEINBERG).convert("RGB")
+    d.rounded_rectangle(b((5,5,1075,571)),radius=max(7,Y(22)),
+        outline=GOLD if variant!=1 else NAVY,width=max(3,Y(6)))
+    return img if color_preview else tp.render_light_thermal_ticket(img,design)
